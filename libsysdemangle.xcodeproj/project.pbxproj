@@ -8,10 +8,42 @@
 
 /* Begin PBXBuildFile section */
 		EE9835B91E837C0F009983C4 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835B81E837C0F009983C4 /* main.c */; };
+		EE9835C81E837FFA009983C4 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835C71E837FFA009983C4 /* main.c */; };
+		EE9835CE1E8388DB009983C4 /* gcc-libstdc.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835CD1E8388DB009983C4 /* gcc-libstdc.c */; };
+		EE9835D01E838919009983C4 /* str.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835CF1E838919009983C4 /* str.c */; };
+		EE9835D11E838919009983C4 /* str.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835CF1E838919009983C4 /* str.c */; };
+		EE9835D41E838A33009983C4 /* util.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835D21E838A33009983C4 /* util.c */; };
+		EE9835D51E838A33009983C4 /* util.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835D21E838A33009983C4 /* util.c */; };
+		EE9835D81E838EB2009983C4 /* cpp.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835D61E838EB2009983C4 /* cpp.c */; };
+		EE9835D91E838EB2009983C4 /* cpp.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835D61E838EB2009983C4 /* cpp.c */; };
+		EE9835DB1E8411C2009983C4 /* cpp_util.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835DA1E8411C2009983C4 /* cpp_util.c */; };
+		EE9835DC1E8411C2009983C4 /* cpp_util.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835DA1E8411C2009983C4 /* cpp_util.c */; };
+		EEAFB7881E860A46009370D7 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = EEAFB7871E860A46009370D7 /* main.c */; };
+		EEAFB78C1E860A69009370D7 /* str.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835CF1E838919009983C4 /* str.c */; };
+		EEAFB78D1E860A71009370D7 /* util.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835D21E838A33009983C4 /* util.c */; };
+		EEAFB78E1E860CCB009370D7 /* cpp_util.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835DA1E8411C2009983C4 /* cpp_util.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		EE9835B31E837C0F009983C4 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		EE9835C31E837FFA009983C4 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		EEAFB7831E860A46009370D7 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = /usr/share/man/man1/;
@@ -25,10 +57,38 @@
 /* Begin PBXFileReference section */
 		EE9835B51E837C0F009983C4 /* libsysdemangle */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = libsysdemangle; sourceTree = BUILT_PRODUCTS_DIR; };
 		EE9835B81E837C0F009983C4 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
+		EE9835BF1E837C3A009983C4 /* libsysdemangle.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = libsysdemangle.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EE9835C01E837DFB009983C4 /* str.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = str.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EE9835C51E837FFA009983C4 /* test */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test; sourceTree = BUILT_PRODUCTS_DIR; };
+		EE9835C71E837FFA009983C4 /* main.c */ = {isa = PBXFileReference; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EE9835CC1E838034009983C4 /* tests.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = tests.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EE9835CD1E8388DB009983C4 /* gcc-libstdc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "gcc-libstdc.c"; sourceTree = "<group>"; };
+		EE9835CF1E838919009983C4 /* str.c */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = str.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EE9835D21E838A33009983C4 /* util.c */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = util.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EE9835D31E838A33009983C4 /* util.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = util.h; sourceTree = "<group>"; };
+		EE9835D61E838EB2009983C4 /* cpp.c */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = cpp.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EE9835D71E838EB2009983C4 /* cpp.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = cpp.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EE9835DA1E8411C2009983C4 /* cpp_util.c */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = cpp_util.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EEAFB7851E860A46009370D7 /* unit */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = unit; sourceTree = BUILT_PRODUCTS_DIR; };
+		EEAFB7871E860A46009370D7 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		EE9835B21E837C0F009983C4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EE9835C21E837FFA009983C4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EEAFB7821E860A46009370D7 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -42,6 +102,8 @@
 			isa = PBXGroup;
 			children = (
 				EE9835B71E837C0F009983C4 /* libsysdemangle */,
+				EE9835C61E837FFA009983C4 /* test */,
+				EEAFB7861E860A46009370D7 /* unit */,
 				EE9835B61E837C0F009983C4 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,6 +112,8 @@
 			isa = PBXGroup;
 			children = (
 				EE9835B51E837C0F009983C4 /* libsysdemangle */,
+				EE9835C51E837FFA009983C4 /* test */,
+				EEAFB7851E860A46009370D7 /* unit */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -58,8 +122,34 @@
 			isa = PBXGroup;
 			children = (
 				EE9835B81E837C0F009983C4 /* main.c */,
+				EE9835BF1E837C3A009983C4 /* libsysdemangle.h */,
+				EE9835C01E837DFB009983C4 /* str.h */,
+				EE9835CF1E838919009983C4 /* str.c */,
+				EE9835D21E838A33009983C4 /* util.c */,
+				EE9835D31E838A33009983C4 /* util.h */,
+				EE9835D61E838EB2009983C4 /* cpp.c */,
+				EE9835D71E838EB2009983C4 /* cpp.h */,
+				EE9835DA1E8411C2009983C4 /* cpp_util.c */,
 			);
 			path = libsysdemangle;
+			sourceTree = "<group>";
+		};
+		EE9835C61E837FFA009983C4 /* test */ = {
+			isa = PBXGroup;
+			children = (
+				EE9835C71E837FFA009983C4 /* main.c */,
+				EE9835CC1E838034009983C4 /* tests.h */,
+				EE9835CD1E8388DB009983C4 /* gcc-libstdc.c */,
+			);
+			path = test;
+			sourceTree = "<group>";
+		};
+		EEAFB7861E860A46009370D7 /* unit */ = {
+			isa = PBXGroup;
+			children = (
+				EEAFB7871E860A46009370D7 /* main.c */,
+			);
+			path = unit;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -82,6 +172,40 @@
 			productReference = EE9835B51E837C0F009983C4 /* libsysdemangle */;
 			productType = "com.apple.product-type.tool";
 		};
+		EE9835C41E837FFA009983C4 /* test */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EE9835C91E837FFA009983C4 /* Build configuration list for PBXNativeTarget "test" */;
+			buildPhases = (
+				EE9835C11E837FFA009983C4 /* Sources */,
+				EE9835C21E837FFA009983C4 /* Frameworks */,
+				EE9835C31E837FFA009983C4 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = test;
+			productName = test;
+			productReference = EE9835C51E837FFA009983C4 /* test */;
+			productType = "com.apple.product-type.tool";
+		};
+		EEAFB7841E860A46009370D7 /* unit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EEAFB78B1E860A46009370D7 /* Build configuration list for PBXNativeTarget "unit" */;
+			buildPhases = (
+				EEAFB7811E860A46009370D7 /* Sources */,
+				EEAFB7821E860A46009370D7 /* Frameworks */,
+				EEAFB7831E860A46009370D7 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = unit;
+			productName = unit;
+			productReference = EEAFB7851E860A46009370D7 /* unit */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -92,6 +216,14 @@
 				ORGANIZATIONNAME = "Jason King";
 				TargetAttributes = {
 					EE9835B41E837C0F009983C4 = {
+						CreatedOnToolsVersion = 8.2.1;
+						ProvisioningStyle = Automatic;
+					};
+					EE9835C41E837FFA009983C4 = {
+						CreatedOnToolsVersion = 8.2.1;
+						ProvisioningStyle = Automatic;
+					};
+					EEAFB7841E860A46009370D7 = {
 						CreatedOnToolsVersion = 8.2.1;
 						ProvisioningStyle = Automatic;
 					};
@@ -110,6 +242,8 @@
 			projectRoot = "";
 			targets = (
 				EE9835B41E837C0F009983C4 /* libsysdemangle */,
+				EE9835C41E837FFA009983C4 /* test */,
+				EEAFB7841E860A46009370D7 /* unit */,
 			);
 		};
 /* End PBXProject section */
@@ -120,6 +254,34 @@
 			buildActionMask = 2147483647;
 			files = (
 				EE9835B91E837C0F009983C4 /* main.c in Sources */,
+				EE9835D81E838EB2009983C4 /* cpp.c in Sources */,
+				EE9835D01E838919009983C4 /* str.c in Sources */,
+				EE9835DB1E8411C2009983C4 /* cpp_util.c in Sources */,
+				EE9835D41E838A33009983C4 /* util.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EE9835C11E837FFA009983C4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EE9835D11E838919009983C4 /* str.c in Sources */,
+				EE9835D51E838A33009983C4 /* util.c in Sources */,
+				EE9835D91E838EB2009983C4 /* cpp.c in Sources */,
+				EE9835DC1E8411C2009983C4 /* cpp_util.c in Sources */,
+				EE9835C81E837FFA009983C4 /* main.c in Sources */,
+				EE9835CE1E8388DB009983C4 /* gcc-libstdc.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EEAFB7811E860A46009370D7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EEAFB7881E860A46009370D7 /* main.c in Sources */,
+				EEAFB78C1E860A69009370D7 /* str.c in Sources */,
+				EEAFB78D1E860A71009370D7 /* util.c in Sources */,
+				EEAFB78E1E860CCB009370D7 /* cpp_util.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -227,6 +389,34 @@
 			};
 			name = Release;
 		};
+		EE9835CA1E837FFA009983C4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		EE9835CB1E837FFA009983C4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		EEAFB7891E860A46009370D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		EEAFB78A1E860A46009370D7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -244,6 +434,24 @@
 			buildConfigurations = (
 				EE9835BD1E837C0F009983C4 /* Debug */,
 				EE9835BE1E837C0F009983C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EE9835C91E837FFA009983C4 /* Build configuration list for PBXNativeTarget "test" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EE9835CA1E837FFA009983C4 /* Debug */,
+				EE9835CB1E837FFA009983C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EEAFB78B1E860A46009370D7 /* Build configuration list for PBXNativeTarget "unit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EEAFB7891E860A46009370D7 /* Debug */,
+				EEAFB78A1E860A46009370D7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 		};
