@@ -23,6 +23,7 @@ extern "C" {
 #endif
 
 void *zalloc(sysdem_alloc_t *, size_t);
+void *sysdem_realloc(sysdem_alloc_t *, void *, size_t, size_t);
 void sysdemfree(sysdem_alloc_t *, void *, size_t);
 
 #ifdef __cplusplus

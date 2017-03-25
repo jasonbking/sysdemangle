@@ -86,15 +86,11 @@ name_reserve(name_t *n, size_t amt)
 		return (B_TRUE);
 
 	size_t newsize = roundup(newlen, CHUNK_SIZE);
-	void *temp = zalloc(n->nm_ops, newsize * sizeof (str_t));
+	void *temp = sysdem_realloc(n->nm_ops, n->nm_items, n->nm_size,
+	    newsize);
 
 	if (temp == NULL)
 		return (B_FALSE);
-
-	if (n->nm_items != NULL) {
-		(void) memcpy(temp, n->nm_items, newsize * sizeof (str_t));
-		sysdemfree(n->nm_ops, n->nm_items, n->nm_size * sizeof (str_t));
-	}
 
 	n->nm_items = temp;
 	n->nm_size = newsize;
@@ -219,33 +215,18 @@ error:
 	return (B_FALSE);
 }
 
-/*
- * replace a number of elements in the name stack with a formatted string
- * for format is a plain string with optional {nnn} or {nnn:L|R} substitutions
- * where nnn is the stack position of an element and it's contents (both
- * left and right pieces) are inserted.  Optionally, only the left or
- * right piece can specified using :L|R e.g. {2:L}{3}{2:R} would insert
- * the left piece of element 2, all of element 3, then the right piece of
- * element 2.
- *
- * Once complete, all elements up to the deepest one references are popped
- * off the stack, and the resulting formatted string is pushed into n.
- *
- * This could be done as a sequence of push & pops, but this makes the
- * intended output far clearer to see.
- */
-boolean_t
-name_fmt(name_t *n, const char *fmt)
+static boolean_t
+name_fmt_s(name_t *n, str_t *s, const char *fmt, long *maxp)
 {
 	const char *p;
-	str_t res;
 	long max = -1;
 
-	str_init(&res, n->nm_ops, NULL, 0);
+	if (fmt == NULL)
+		return (B_TRUE);
 
 	for (p = fmt; *p != '\0'; p++) {
 		if (*p != '{') {
-			str_append_c(&res, *p);
+			str_append_c(s, *p);
 			continue;
 		}
 
@@ -263,21 +244,21 @@ name_fmt(name_t *n, const char *fmt)
 
 		switch (q[0]) {
 		case '}':
-			if (!str_append_str(&res, &sp->strp_l))
-				goto error;
-			if (!str_append_str(&res, &sp->strp_r))
-				goto error;
+			if (!str_append_str(s, &sp->strp_l))
+				return (B_FALSE);
+			if (!str_append_str(s, &sp->strp_r))
+				return (B_FALSE);
 			p = q;
 			continue;
 		case ':':
 			switch (q[1]) {
 			case 'L':
-				if (!str_append_str(&res, &sp->strp_l))
-					goto error;
+				if (!str_append_str(s, &sp->strp_l))
+					return (B_FALSE);
 				break;
 			case 'R':
-				if (!str_append_str(&res, &sp->strp_r))
-					goto error;
+				if (!str_append_str(s, &sp->strp_r))
+					return (B_FALSE);
 				break;
 			}
 
@@ -287,18 +268,53 @@ name_fmt(name_t *n, const char *fmt)
 		}
 	}
 
+	if (*maxp < max)
+		*maxp = max;
+
+	return (B_TRUE);
+}
+
+/*
+ * replace a number of elements in the name stack with a formatted string
+ * for format is a plain string with optional {nnn} or {nnn:L|R} substitutions
+ * where nnn is the stack position of an element and it's contents (both
+ * left and right pieces) are inserted.  Optionally, only the left or
+ * right piece can specified using :L|R e.g. {2:L}{3}{2:R} would insert
+ * the left piece of element 2, all of element 3, then the right piece of
+ * element 2.
+ *
+ * Once complete, all elements up to the deepest one references are popped
+ * off the stack, and the resulting formatted string is pushed into n.
+ *
+ * This could be done as a sequence of push & pops, but this makes the
+ * intended output far clearer to see.
+ */
+boolean_t
+name_fmt(name_t *n, const char *fmt_l, const char *fmt_r)
+{
+	str_pair_t res;
+	long max = -1;
+
+	(void) str_pair_init(&res, n->nm_ops);
+
+	if (!name_reserve(n, 1))
+		return (B_FALSE);
+
+	if (!name_fmt_s(n, &res.strp_l, fmt_l, &max))
+		goto error;
+	if (!name_fmt_s(n, &res.strp_r, fmt_r, &max))
+		goto error;
+
 	if (max >= 0) {
 		for (size_t i = 0; i <= max; i++)
 			(void) name_pop(n, NULL);
 	}
 
-	if (!name_add_str(n, &res, NULL))
-		goto error;
-
+	n->nm_items[n->nm_len++] = res;
 	return (B_TRUE);
 
 error:
-	str_fini(&res);
+	str_pair_fini(&res);
 	return (B_FALSE);
 }
 
@@ -309,11 +325,10 @@ error:
  * is also a copy operation.
  */
 void
-sub_clear(sub_t *sub)
+sub_init(sub_t *sub, sysdem_alloc_t *ops)
 {
-	for (size_t i = 0; i < sub->sub_len; i++)
-		name_fini(&sub->sub_items[i]);
-	sub->sub_len = 0;
+	(void) memset(sub, 0, sizeof (*sub));
+	sub->sub_ops = ops;
 }
 
 void
@@ -328,10 +343,66 @@ sub_fini(sub_t *sub)
 	sub->sub_size = 0;
 }
 
+void
+sub_clear(sub_t *sub)
+{
+	for (size_t i = 0; i < sub->sub_len; i++)
+		name_fini(&sub->sub_items[i]);
+	sub->sub_len = 0;
+}
+
 boolean_t
 sub_empty(const sub_t *sub)
 {
 	return ((sub->sub_len == 0) ? B_TRUE : B_FALSE);
+}
+
+static boolean_t
+sub_reserve(sub_t *sub, size_t amt)
+{
+	if (sub->sub_len + amt < sub->sub_size)
+		return (B_TRUE);
+
+	size_t newsize = roundup(sub->sub_size, CHUNK_SIZE);
+	void *temp = sysdem_realloc(sub->sub_ops, sub->sub_items,
+	    sub->sub_size * sizeof (name_t), newsize * sizeof (name_t));
+
+	if (temp == NULL)
+		return (B_FALSE);
+
+	for (size_t i = sub->sub_len; i < newsize; i++)
+		name_init(&sub->sub_items[i], sub->sub_ops);
+
+	sub->sub_items = temp;
+	sub->sub_size = newsize;
+
+	return (B_TRUE);
+}
+
+boolean_t
+sub_save_top(sub_t *sub, const name_t *n)
+{
+	ASSERT(!name_empty(n));
+
+	const str_pair_t *top = &n->nm_items[n->nm_len - 1];
+	str_t l, r;
+
+	str_init(&l, sub->sub_ops, NULL, 0);
+	str_init(&r, sub->sub_ops, NULL, 0);
+
+	if (!sub_reserve(sub, 1))
+		return (B_FALSE);
+
+	if (!str_append_str(&l, &top->strp_l) ||
+	    !str_append_str(&r, &top->strp_r)) {
+		str_fini(&l);
+		str_fini(&r);
+		return (B_FALSE);
+	}
+
+	name_t *newname = &sub->sub_items[sub->sub_len];
+
+	return (B_TRUE);
 }
 
 boolean_t

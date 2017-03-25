@@ -37,12 +37,12 @@ typedef struct str_pair_s {
 	str_t	strp_r;
 } str_pair_t;
 
-str_t *str_init(str_t *restrict, sysdem_alloc_t *, const char *restrict,
+void str_init(str_t *restrict, sysdem_alloc_t *, const char *restrict,
    size_t);
 void str_fini(str_t *);
 size_t str_length(const str_t *);
 boolean_t str_append(str_t *, const char *, size_t);
-boolean_t str_append_str(str_t *, str_t *);
+boolean_t str_append_str(str_t *, const str_t *);
 boolean_t str_append_c(str_t *, int);
 boolean_t str_insert(str_t *, size_t, const char *, size_t);
 boolean_t str_insert_str(str_t *, size_t, str_t *);

@@ -13,6 +13,8 @@
 #include "sysdemangle.h"
 #include "cpp.h"
 
+#define TOP_L(db) (&(name_top(&(db)->cpp_name)->strp_l))
+
 #define CPP_QUAL_CONST		(1U)
 #define CPP_QUAL_VOLATILE	(2U)
 #define CPP_QUAL_RESTRICT	(4U)
@@ -53,6 +55,15 @@ static const char *parse_name(const char *, const char *, boolean_t *,
 static const char *parse_type(const char *, const char *, cpp_db_t *);
 static const char *parse_call_offset(const char *, const char *);
 static const char *parse_number(const char *, const char *);
+static const char *parse_nested_name(const char *, const char *, boolean_t *,
+				     cpp_db_t *);
+static const char *parse_local_name(const char *, const char *, boolean_t *,
+				    cpp_db_t *);
+static const char *parse_unscoped_name(const char *, const char *, cpp_db_t *);
+static const char *parse_template_args(const char *, const char *, cpp_db_t *);
+static const char *parse_substitution(const char *, const char *, cpp_db_t *);
+static const char *parse_discriminator(const char *, const char *);
+static const char *parse_cv_qualifiers(const char *, const char *, unsigned *);
 
 char *
 cpp_demangle(const char *src, sysdem_alloc_t *ops)
@@ -172,25 +183,20 @@ parse_block_invoke(const char *first, const char *last, cpp_db_t *db)
 		goto done;
 
 	if (t[0] == '_') {
+		/* need at least one digit */
 		if (t + 1 == last || !is_digit(t[1]))
-			goto done;
+			return (first);
 		t += 2;
 	}
 
 	while (t < last && is_digit(t[0]))
 		t++;
 
-	if (!name_empty(&db->cpp_name)) {
-		str_pair_t *sp = name_top(&db->cpp_name);
-
-		CK(str_insert(&sp->strp_l, 0,
-		    "invocation function for block in ", 0));
-	}
-
 done:
 	if (name_empty(&db->cpp_name))
 		return (first);
 
+	CK(name_fmt(&db->cpp_name, "invocation function for block in {0}"));
 	return (t);
 }
 
@@ -239,11 +245,55 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 		t2 = parse_type(t, last, db);
 		if (t2 == t || name_len(&db->cpp_name) < 2)
 			goto fail;
-/* XXX: TODO */
 
+		str_pair_t *sp = name_top(&db->cpp_name);
 
+		if (str_length(&sp->strp_r) == 0)
+			str_append(&sp->strp_l, " ", 1);
+
+		t = t2;
+	} else {
+		CK(name_add(&db->cpp_name, "", 0, "", 0));
 	}
 
+	if (t == last || name_empty((&db->cpp_name)))
+		goto error;
+
+	if (t[0] == 'v') {
+		t++;
+	} else {
+		size_t n = name_len(&db->cpp_name);
+
+		/*CONSTCOND*/
+		while (1) {
+			t2 = parse_type(t, last, db);
+			if (t2 == t)
+				break;
+			t = t2;
+		}
+
+		CK(name_join(&db->cpp_name, name_len(&db->cpp_name) - n, ", "));
+	}
+
+	str_t *s = &name_top(&db->cpp_name)->strp_l;
+
+	if (cv & CPP_QUAL_CONST) {
+		CK(str_append(s, " const", 0));
+	}
+	if (cv & CPP_QUAL_VOLATILE) {
+		CK(str_append(s, " volatile", 0));
+	}
+	if (cv & CPP_QUAL_RESTRICT) {
+		CK(str_append(s, " restrict", 0));
+	}
+	if (ref == 1) {
+		CK(str_append(s, " &", 0));
+	}
+	if (ref == 2) {
+		CK(str_append(s, " &&", 0));
+	}
+
+	CK(name_fmt(&db->cpp_name, "{1:L}({0}){1:R}", NULL));
 
 done:
 	db->cpp_tag_templates = tag_templ_save;
@@ -384,6 +434,246 @@ parse_special_name(const char *first, const char *last, cpp_db_t *db)
 		return (first);
 
 	CK(name_join(&db->cpp_name, name_len(&db->cpp_name) - n, " "));
+	return (t);
+}
+
+/*
+ * <call-offset> ::= h <nv-offset> _
+ *               ::= v <v-offset> _
+ *
+ * <nv-offset> ::= <offset number>
+ *               # non-virtual base override
+ *
+ * <v-offset>  ::= <offset number> _ <virtual offset number>
+ *               # virtual base override, with vcall offset
+ */
+static const char *
+parse_call_offset(const char *first, const char *last)
+{
+	const char *t = NULL;
+	const char *t1 = NULL;
+
+	if (first == last)
+		return (first);
+
+	if (first[0] != 'h' && first[0] != 'v')
+		return (first);
+
+	t = parse_number(first + 1, last);
+	if (t == first + 1 || t == last || t[0] != '_')
+		return (first);
+
+	/* skip _ */
+	t++;
+
+	if (first[0] == 'h')
+		return (t);
+
+	t1 = parse_number(t, last);
+	if (t == t1 || t1 == last || t1[0] != '_')
+		return (first);
+
+	/* skip _ */
+	t1++;
+
+	return (t1);
+}
+
+/*
+ * <name> ::= <nested-name> // N
+ *        ::= <local-name> # See Scope Encoding below  // Z
+ *        ::= <unscoped-template-name> <template-args>
+ *        ::= <unscoped-name>
+ *
+ * <unscoped-template-name> ::= <unscoped-name>
+ *                          ::= <substitution>
+ */
+static const char *
+parse_name(const char *first, const char *last,
+    boolean_t *ends_with_template_args, cpp_db_t *db)
+{
+	const char *t = first;
+	const char *t1 = NULL;
+
+	if (last - first < 2)
+		return (first);
+
+	/* extension: ignore L here */
+	if (t[0] == 'L')
+		t++;
+
+	switch (t[0]) {
+	case 'N':
+		t1 = parse_nested_name(t, last, ends_with_template_args, db);
+		return ((t == t1) ? first : t1);
+	case 'Z':
+		t1 = parse_local_name(t, last, ends_with_template_args, db);
+		return ((t == t1) ? first : t1);
+	}
+
+	/*
+	 * <unscoped-name>
+	 * <unscoped-name> <template-args>
+	 * <substitution> <template-args>
+	 */
+
+	t1 = parse_unscoped_name(t, last, db);
+
+	/* <unscoped-name> */
+	if (t != t1 && t1[0] != 'I')
+		return (t1);
+
+	if (t == t1) {
+		t1 = parse_substitution(t, last, db);
+		if (t == t1 || t1 == last || t1[0] != 'I')
+			return (first);
+	} else {
+		CK(sub_save_top(&db->cpp_name));
+	}
+
+	t = parse_template_args(t1, last, db);
+	if (t1 == t || name_len(&db->cpp_name) < 2)
+		return (first);
+
+	CK(name_fmt(&db->cpp_name, "{1:L}{0}", "{1:R}"));
+
+	if (ends_with_template_args != NULL)
+		*ends_with_template_args = B_TRUE;
+
+	return (t);
+}
+
+/*BEGIN CSTYLED*/
+/*
+ * <local-name> := Z <function encoding> E <entity name> [<discriminator>]
+ *              := Z <function encoding> E s [<discriminator>]
+ *              := Z <function encoding> Ed [ <parameter number> ] _ <entity name>
+ */
+/*END CSTYLED*/
+const char *
+parse_local_name(const char *first, const char *last,
+    boolean_t *ends_with_template_args, cpp_db_t *db)
+{
+	const char *t = NULL;
+	const char *t1 = NULL;
+	const char *t2 = NULL;
+
+	if (first == last || first[0] != 'Z')
+		return (first);
+
+	t = parse_encoding(first + 1, last, db);
+	if (t == first + 1 || t == last || t[0] != 'E')
+		return (first);
+
+	ASSERT(!name_empty(&db->cpp_name));
+
+	/* skip E */
+	t++;
+
+	if (t[0] == 's') {
+		CK(str_append(TOP_L(db), "::string literal", 0));
+		return (parse_discriminator(t, last));
+	}
+
+	if (t[0] == 'd') {
+		t1 = parse_number(t + 1, last);
+		if (t1[0] != '_')
+			return (first);
+		t1++;
+	} else {
+		t1 = t;
+	}
+
+	t2 = parse_name(t1, last, ends_with_template_args, db);
+	if (t2 == t1)
+		return (first);
+
+	CK(name_fmt(&db->cpp_name, "{1:L}::{0}", "{1:R}"));
+
+	/* parsed, but ignored */
+	if (t[0] != 'd')
+		t2 = parse_discriminator(t2, last);
+
+	return (t2);
+}
+
+/*
+ * <discriminator> := _ <non-negative number>      # when number < 10
+ *                 := __ <non-negative number> _   # when number >= 10
+ *  extension      := decimal-digit+               # at the end of string
+ */
+static const char *
+parse_discriminator(const char *first, const char *last)
+{
+	const char *t = NULL;
+
+	if (first == last)
+		return (first);
+
+	if (is_digit(first[0])) {
+		for (t = first; t != last && is_digit(t[0]); t++)
+			;
+		return (t);
+	} else if (first[0] != '_' || first + 1 == last) {
+		return (first);
+	}
+
+	t = first + 1;
+	if (is_digit(t[0]))
+		return (t + 1);
+
+	if (t[0] != '_' || t + 1 == last)
+		return (first);
+
+	for (t++; t != last && is_digit(t[0]); t++)
+		;
+	if (t == last || t[0] != '_')
+		return (first);
+
+	return (t);
+}
+
+/* <CV-qualifiers> ::= [r] [V] [K] */
+const char *
+parse_cv_qualifiers(const char *first, const char *last, unsigned *cv)
+{
+	if (first == last)
+		return (first);
+
+	*cv = 0;
+	if (first[0] == 'r') {
+		cv |= CPP_QUAL_RESTRICT;
+		first++;
+	}
+	if (first != last && first[0] == 'V') {
+		cv |= CPP_QUAL_VOLATILE;
+		first++;
+	}
+	if (first != last && first[0] == 'K') {
+		cv |= CPP_QUAL_CONST;
+		first++;
+	}
+
+	return (first);
+}
+
+/*
+ * <number> ::= [n] <non-negative decimal integer>
+ */
+static const char *
+parse_number(const char *first, const char *last)
+{
+	const char *t = first + 1;
+
+	if (first == last || first[0] != 'n')
+		return (first);
+
+	if (t[0] == '0')
+		return (t + 1);
+
+	while (is_digit(t[0]))
+		t++;
+
 	return (t);
 }
 

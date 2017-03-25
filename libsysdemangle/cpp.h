@@ -28,7 +28,7 @@ boolean_t name_empty(const name_t *);
 boolean_t name_add(name_t *, const char *, size_t, const char *, size_t);
 boolean_t name_add_str(name_t *, str_t *, str_t *);
 boolean_t name_join(name_t *, size_t, const char *);
-boolean_t name_fmt(name_t *, const char *);
+boolean_t name_fmt(name_t *, const char *, const char *);
 str_pair_t *name_at(name_t *, size_t);
 str_pair_t *name_top(name_t *);
 
@@ -43,6 +43,7 @@ void sub_clear(sub_t *);
 void sub_init(sub_t *, sysdem_alloc_t *);
 void sub_fini(sub_t *);
 boolean_t sub_save(sub_t *, const name_t *);
+boolean_t sub_save_top(sub_t *, const name_t *);
 boolean_t sub_substitute(sub_t *, size_t, name_t *);
 boolean_t sub_empty(const sub_t *);
 

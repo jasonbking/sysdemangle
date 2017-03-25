@@ -14,6 +14,7 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 #include "sysdemangle.h"
 #include "util.h"
 
@@ -26,7 +27,28 @@ zalloc(sysdem_alloc_t *ops, size_t len)
 void
 sysdemfree(sysdem_alloc_t *ops, void *p, size_t len)
 {
+	if (p == NULL || len == 0)
+		return;
+
 	ops->free(p, len);
+}
+
+void *
+sysdem_realloc(sysdem_alloc_t *ops, void *p, size_t oldsz, size_t newsz)
+{
+	if (newsz == oldsz)
+		return (p);
+	ASSERT3U(newsz, >, oldsz);
+
+	void *temp = zalloc(ops, newsz);
+
+	if (temp == NULL)
+		return (NULL);
+
+	(void) memcpy(temp, p, oldsz);
+	sysdemfree(ops, p, oldsz);
+
+	return (temp);
 }
 
 static void *

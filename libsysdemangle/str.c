@@ -25,7 +25,7 @@
  * NOTE: these are not necessairly 0-terminated
  */
 
-str_t *
+void
 str_init(str_t *restrict s, sysdem_alloc_t *restrict ops, const char *cstr,
 	 size_t cstr_len)
 {
@@ -46,7 +46,8 @@ str_init(str_t *restrict s, sysdem_alloc_t *restrict ops, const char *cstr,
 	return (s);
 }
 
-void str_fini(str_t *s)
+void
+str_fini(str_t *s)
 {
 	if (s == NULL)
 		return;
@@ -72,14 +73,10 @@ str_reserve(str_t *s, size_t amt)
 		return (B_TRUE);
 
 	size_t newsize = roundup(newlen, STR_CHUNK_SZ);
-	void *temp = zalloc(s->str_ops, newsize);
+	void *temp = sysdem_realloc(s->str_ops, s->str_s, s->str_size, newsize);
 
 	if (temp == NULL)
 		return (B_FALSE);
-
-	(void) memcpy(temp, s->str_s, s->str_len);
-	if (s->str_size > 0)
-		sysdemfree(s->str_ops, s->str_s, s->str_size);
 
 	s->str_s = temp;
 	s->str_size = newsize;
@@ -93,7 +90,7 @@ str_append(str_t *s, const char *cstr, size_t cstrlen)
 	if (cstr != NULL && cstrlen == 0)
 		cstrlen = strlen(cstr);
 
-	str_t src = {
+	const str_t src = {
 		.str_s = (char *)cstr,
 		.str_len = cstrlen,
 		.str_ops = s->str_ops
@@ -103,18 +100,10 @@ str_append(str_t *s, const char *cstr, size_t cstrlen)
 }
 
 boolean_t
-str_append_str(str_t *s, str_t *src)
+str_append_str(str_t *s, const str_t *src)
 {
 	if (src->str_s == NULL || src->str_len == 0)
 		return (B_TRUE);
-
-	if (s->str_len == 0 && src->str_size == 0) {
-		sysdemfree(s->str_ops, s->str_s, s->str_size);
-		s->str_s = src->str_s;
-		s->str_len = src->str_len;
-		s->str_size = 0;
-		return (B_TRUE);
-	}
 
 	if (!str_reserve(s, src->str_len))
 		return (B_FALSE);
