@@ -13,8 +13,8 @@
  * Copyright 2017 Jason King
  */
 
-#ifndef _LIBSYSDEMANGLE_H
-#define	_LIBSYSDEMANGLE_H
+#ifndef _SYSDEMANGLE_H
+#define	_SYSDEMANGLE_H
 
 #include <sys/types.h>
 
@@ -61,4 +61,4 @@ char *sysdemangle(const char *, sysdem_alloc_t *);
 }
 #endif
 
-#endif /* _LIBSYSDEMANGLE_H */
+#endif /* _SYSDEMANGLE_H */

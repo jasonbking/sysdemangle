@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		EE9835B91E837C0F009983C4 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835B81E837C0F009983C4 /* main.c */; };
 		EE9835C81E837FFA009983C4 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835C71E837FFA009983C4 /* main.c */; };
 		EE9835CE1E8388DB009983C4 /* gcc-libstdc.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835CD1E8388DB009983C4 /* gcc-libstdc.c */; };
 		EE9835D01E838919009983C4 /* str.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835CF1E838919009983C4 /* str.c */; };
@@ -56,8 +55,7 @@
 
 /* Begin PBXFileReference section */
 		EE9835B51E837C0F009983C4 /* libsysdemangle */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = libsysdemangle; sourceTree = BUILT_PRODUCTS_DIR; };
-		EE9835B81E837C0F009983C4 /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
-		EE9835BF1E837C3A009983C4 /* libsysdemangle.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = libsysdemangle.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
+		EE9835BF1E837C3A009983C4 /* sysdemangle.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = sysdemangle.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
 		EE9835C01E837DFB009983C4 /* str.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = str.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
 		EE9835C51E837FFA009983C4 /* test */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test; sourceTree = BUILT_PRODUCTS_DIR; };
 		EE9835C71E837FFA009983C4 /* main.c */ = {isa = PBXFileReference; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
@@ -101,7 +99,7 @@
 		EE9835AC1E837C0F009983C4 = {
 			isa = PBXGroup;
 			children = (
-				EE9835B71E837C0F009983C4 /* libsysdemangle */,
+				EE9835B71E837C0F009983C4 /* sysdemangle */,
 				EE9835C61E837FFA009983C4 /* test */,
 				EEAFB7861E860A46009370D7 /* unit */,
 				EE9835B61E837C0F009983C4 /* Products */,
@@ -118,11 +116,10 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		EE9835B71E837C0F009983C4 /* libsysdemangle */ = {
+		EE9835B71E837C0F009983C4 /* sysdemangle */ = {
 			isa = PBXGroup;
 			children = (
-				EE9835B81E837C0F009983C4 /* main.c */,
-				EE9835BF1E837C3A009983C4 /* libsysdemangle.h */,
+				EE9835BF1E837C3A009983C4 /* sysdemangle.h */,
 				EE9835C01E837DFB009983C4 /* str.h */,
 				EE9835CF1E838919009983C4 /* str.c */,
 				EE9835D21E838A33009983C4 /* util.c */,
@@ -131,6 +128,7 @@
 				EE9835D71E838EB2009983C4 /* cpp.h */,
 				EE9835DA1E8411C2009983C4 /* cpp_util.c */,
 			);
+			name = sysdemangle;
 			path = libsysdemangle;
 			sourceTree = "<group>";
 		};
@@ -229,7 +227,7 @@
 					};
 				};
 			};
-			buildConfigurationList = EE9835B01E837C0F009983C4 /* Build configuration list for PBXProject "libsysdemangle" */;
+			buildConfigurationList = EE9835B01E837C0F009983C4 /* Build configuration list for PBXProject "sysdemangle" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
@@ -253,7 +251,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EE9835B91E837C0F009983C4 /* main.c in Sources */,
 				EE9835D81E838EB2009983C4 /* cpp.c in Sources */,
 				EE9835D01E838919009983C4 /* str.c in Sources */,
 				EE9835DB1E8411C2009983C4 /* cpp_util.c in Sources */,
@@ -420,7 +417,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		EE9835B01E837C0F009983C4 /* Build configuration list for PBXProject "libsysdemangle" */ = {
+		EE9835B01E837C0F009983C4 /* Build configuration list for PBXProject "sysdemangle" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				EE9835BA1E837C0F009983C4 /* Debug */,
@@ -454,6 +451,7 @@
 				EEAFB78A1E860A46009370D7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

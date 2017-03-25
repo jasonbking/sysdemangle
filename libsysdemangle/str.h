@@ -17,7 +17,11 @@
 #define _STR_H
 
 #include <sys/types.h>
-#include "libsysdemangle.h"
+#include "sysdemangle.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct sysdem_alloc_s;
 
@@ -46,5 +50,9 @@ boolean_t str_insert_str(str_t *, size_t, str_t *);
 str_pair_t *str_pair_init(str_pair_t *, sysdem_alloc_t *);
 void str_pair_fini(str_pair_t *);
 boolean_t str_pair_merge(str_pair_t *);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _STR_H */

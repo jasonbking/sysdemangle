@@ -10,7 +10,7 @@
 #include <errno.h>
 #include <string.h>
 #include <setjmp.h>
-#include "libsysdemangle.h"
+#include "sysdemangle.h"
 #include "cpp.h"
 
 #define CPP_QUAL_CONST		(1U)
@@ -383,7 +383,7 @@ parse_special_name(const char *first, const char *last, cpp_db_t *db)
 	if (t == first + 2 || name_len(&db->cpp_name) - n < 2)
 		return (first);
 
-	CK(name_join(&db->cpp_name, n, " "));
+	CK(name_join(&db->cpp_name, name_len(&db->cpp_name) - n, " "));
 	return (t);
 }
 

@@ -10,7 +10,7 @@
 #define cpp_h
 
 #include <stdio.h>
-#include "libsysdemangle.h"
+#include "sysdemangle.h"
 #include "str.h"
 
 typedef struct name_s {

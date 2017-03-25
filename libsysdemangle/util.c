@@ -14,7 +14,7 @@
  */
 
 #include <stdlib.h>
-#include "libsysdemangle.h"
+#include "sysdemangle.h"
 #include "util.h"
 
 void *

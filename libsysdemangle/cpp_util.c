@@ -91,8 +91,10 @@ name_reserve(name_t *n, size_t amt)
 	if (temp == NULL)
 		return (B_FALSE);
 
-	(void) memcpy(temp, n->nm_items, newsize * sizeof (str_t));
-	sysdemfree(n->nm_ops, n->nm_items, n->nm_size * sizeof (str_t));
+	if (n->nm_items != NULL) {
+		(void) memcpy(temp, n->nm_items, newsize * sizeof (str_t));
+		sysdemfree(n->nm_ops, n->nm_items, n->nm_size * sizeof (str_t));
+	}
 
 	n->nm_items = temp;
 	n->nm_size = newsize;
@@ -121,14 +123,17 @@ name_add_str(name_t *n, str_t *l, str_t *r)
 	if (!name_reserve(n, 1))
 		return (B_FALSE);
 
-	if (l != NULL)
+	if (l != NULL) {
 		sp.strp_l = *l;
-	if (r != NULL)
-		sp.strp_r = *r;
-	n->nm_items[n->nm_len++] = sp;
+		(void) memset(l, 0, sizeof (*l));
+	}
 
-	(void) memset(l, 0, sizeof (*l));
-	(void) memset(r, 0, sizeof (*r));
+	if (r != NULL) {
+		sp.strp_r = *r;
+		(void) memset(r, 0, sizeof (*r));
+	}
+
+	n->nm_items[n->nm_len++] = sp;
 
 	return (B_TRUE);
 }
@@ -155,10 +160,14 @@ name_pop(name_t *n, str_pair_t *sp)
 	if (n->nm_len == 0)
 		return (NULL);
 
+	str_pair_t *top = name_top(n);
+
 	if (sp != NULL) {
-		str_pair_t *top = name_top(n);
 		*sp = *top;
 		(void) memset(top, 0, sizeof (*top));
+
+	} else {
+		str_pair_fini(top);
 	}
 
 	n->nm_len--;
@@ -183,8 +192,8 @@ name_join(name_t *n, size_t amt, const char *sep)
 
 	(void) str_init(&res, n->nm_ops, NULL, 0);
 
-	sp = name_at(n, n->nm_len - amt - 1);
-	for (size_t i = amt; i < n->nm_len; i++) {
+	sp = name_at(n, n->nm_len - amt);
+	for (size_t i = 0; i < amt; i++) {
 		if (i > 0) {
 			if (!str_append(&res, sep, seplen))
 				goto error;
@@ -198,7 +207,7 @@ name_join(name_t *n, size_t amt, const char *sep)
 		sp++;
 	}
 
-	for (size_t i = 0; i < n->nm_len - amt; i++)
+	for (size_t i = 0; i < amt; i++)
 		(void) name_pop(n, NULL);
 
 	/* since we've removed at least 1 entry, this should always succeed */
@@ -273,7 +282,7 @@ name_fmt(name_t *n, const char *fmt)
 			}
 
 			p = q + 2;
-			VERIFY(*q == '}');
+			VERIFY(*p == '}');
 			break;
 		}
 	}
