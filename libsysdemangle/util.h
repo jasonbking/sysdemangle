@@ -22,9 +22,11 @@
 extern "C" {
 #endif
 
-void *zalloc(sysdem_alloc_t *, size_t);
-void *sysdem_realloc(sysdem_alloc_t *, void *, size_t, size_t);
-void sysdemfree(sysdem_alloc_t *, void *, size_t);
+extern sysdem_ops_t *sysdem_ops_default;
+
+void *zalloc(sysdem_ops_t *, size_t);
+void *xrealloc(sysdem_ops_t *, void *, size_t, size_t);
+void xfree(sysdem_ops_t *, void *, size_t);
 
 #ifdef __cplusplus
 }

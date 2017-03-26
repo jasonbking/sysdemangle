@@ -43,7 +43,8 @@ int main(int argc, const char * argv[]) {
     str_t s = { 0 };
     name_t n = { 0 };
 
-    str_init(&s, sysdem_alloc_default, "initial value", 0);
+    str_init(&s, sysdem_alloc_default);
+    str_append(&s, "initial value", 0);
     str_insert(&s, 8, "(...)", 0);
     (void) printf("%.*s\n", (int) s.str_len, s.str_s);
 
@@ -59,7 +60,7 @@ int main(int argc, const char * argv[]) {
     name_add(&n, "test 2 L", 0, "test 2 R", 0);
     print_n(&n);
 
-    name_fmt(&n, "{0:L} ({1}) {0:R}");
+    name_fmt(&n, "{0:L} ({1}) {0:R}", NULL);
     print_n(&n);
 
     name_add(&n, "something else", 0, NULL, 0);

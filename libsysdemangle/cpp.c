@@ -13,14 +13,12 @@
 #include "sysdemangle.h"
 #include "cpp.h"
 
-#define TOP_L(db) (&(name_top(&(db)->cpp_name)->strp_l))
-
 #define CPP_QUAL_CONST		(1U)
 #define CPP_QUAL_VOLATILE	(2U)
 #define CPP_QUAL_RESTRICT	(4U)
 
 typedef struct cpp_db_s {
-	sysdem_alloc_t	*cpp_ops;
+	sysdem_ops_t	*cpp_ops;
 	jmp_buf		cpp_jmp;
 	name_t		cpp_name;
 	sub_t		cpp_subs;
@@ -40,8 +38,21 @@ typedef struct cpp_db_s {
 		longjmp(db->cpp_jmp, 1);	\
     } while (0)
 
+#define TOP_L(db) (&(name_top(&(db)->cpp_name)->strp_l))
+#define RLEN(f, l) ((size_t)(l) - (f))
+#define NAMT(db, n) (nlen(db) - n)
+
 static inline boolean_t is_digit(int);
-static void db_init(cpp_db_t *, sysdem_alloc_t *);
+
+static boolean_t nempty(cpp_db_t *);
+static size_t nlen(cpp_db_t *);
+static void nadd_l(cpp_db_t *, const char *, size_t);
+static void njoin(cpp_db_t *, size_t, const char *);
+static void nfmt(cpp_db_t *, const char *, const char *);
+
+static void save_top(cpp_db_t *);
+
+static void db_init(cpp_db_t *, sysdem_ops_t *);
 static void db_fini(cpp_db_t *);
 
 static void demangle(const char *, const char *, cpp_db_t *);
@@ -64,9 +75,32 @@ static const char *parse_template_args(const char *, const char *, cpp_db_t *);
 static const char *parse_substitution(const char *, const char *, cpp_db_t *);
 static const char *parse_discriminator(const char *, const char *);
 static const char *parse_cv_qualifiers(const char *, const char *, unsigned *);
+static const char *parse_template_param(const char *, const char *, cpp_db_t *);
+static const char *parse_decltype(const char *, const char *, cpp_db_t *);
+static const char *parse_template_args(const char *, const char *, cpp_db_t *);
+static const char *parse_unqualified_name(const char *, const char *,
+    cpp_db_t *);
+static const char *parse_template_arg(const char *, const char *, cpp_db_t *);
+static const char *parse_expr_primary(const char *, const char *, cpp_db_t *);
+static const char *parse_type(const char *, const char *, cpp_db_t *);
+static const char *parse_expr(const char *, const char *, cpp_db_t *);
+static const char *parse_binary_expr(const char *, const char *,
+    const char *, cpp_db_t *);
+static const char *parse_prefix_expr(const char *, const char *,
+    const char *, cpp_db_t *);
+static const char *parse_gs(const char *, const char *, cpp_db_t *);
+static const char *parse_idx_expr(const char *, const char *, cpp_db_t *);
+static const char *parse_mm_expr(const char *, const char *, cpp_db_t *);
+static const char *parse_pp_expr(const char *, const char *, cpp_db_t *);
+static const char *parse_trinary_expr(const char *, const char *, cpp_db_t *);
+static const char *parse_function_param(const char *, const char *, cpp_db_t *);
+static const char *parse_unresolved_name(const char *, const char *,
+    cpp_db_t *);
+static const char *parse_noexcept_expr(const char *, const char *, cpp_db_t *);
+static const char *parse_alignof(const char *, const char *, cpp_db_t *);
 
 char *
-cpp_demangle(const char *src, sysdem_alloc_t *ops)
+cpp_demangle(const char *src, sysdem_ops_t *ops)
 {
 	char *result = NULL;
 	cpp_db_t db;
@@ -152,11 +186,11 @@ parse_dot_suffix(const char *first, const char *last, cpp_db_t *db)
 	if (first == last || first[0] != '.')
 		return (first);
 
-	if (name_empty(&db->cpp_name))
+	if (nempty(db))
 		return (first);
 
-	CK(name_add(&db->cpp_name, first, (size_t)(last - first), NULL, 0));
-	CK(name_fmt(&db->cpp_name, " ({0})"));
+	nadd_l(db, first, RLEN(first, last));
+	nfmt(db, " ({0})");
 
 	return (last);
 }
@@ -193,10 +227,10 @@ parse_block_invoke(const char *first, const char *last, cpp_db_t *db)
 		t++;
 
 done:
-	if (name_empty(&db->cpp_name))
+	if (nempty(db))
 		return (first);
 
-	CK(name_fmt(&db->cpp_name, "invocation function for block in {0}"));
+	nfmt(db, "invocation function for block in {0}");
 	return (t);
 }
 
@@ -237,13 +271,12 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 		goto done;
 
 	db->cpp_tag_templates = B_FALSE;
-	if (name_empty(&db->cpp_name) ||
-	    str_length(&name_top(&db->cpp_name)->strp_l) == 0)
+	if (nempty(db) || str_length(TOP_L(db)) == 0)
 		goto fail;
 
 	if (!db->cpp_parsed_ctor_dtor_cv && ends_with_template_args) {
 		t2 = parse_type(t, last, db);
-		if (t2 == t || name_len(&db->cpp_name) < 2)
+		if (t2 == t || nlen(db) < 2)
 			goto fail;
 
 		str_pair_t *sp = name_top(&db->cpp_name);
@@ -256,13 +289,13 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 		CK(name_add(&db->cpp_name, "", 0, "", 0));
 	}
 
-	if (t == last || name_empty((&db->cpp_name)))
+	if (t == last || nempty(db))
 		goto error;
 
 	if (t[0] == 'v') {
 		t++;
 	} else {
-		size_t n = name_len(&db->cpp_name);
+		size_t n = nlen(db);
 
 		/*CONSTCOND*/
 		while (1) {
@@ -272,10 +305,10 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 			t = t2;
 		}
 
-		CK(name_join(&db->cpp_name, name_len(&db->cpp_name) - n, ", "));
+		njoin(db, NAMT(db, n), ", ");
 	}
 
-	str_t *s = &name_top(&db->cpp_name)->strp_l;
+	str_t *s = TOP_L(db);
 
 	if (cv & CPP_QUAL_CONST) {
 		CK(str_append(s, " const", 0));
@@ -293,7 +326,7 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 		CK(str_append(s, " &&", 0));
 	}
 
-	CK(name_fmt(&db->cpp_name, "{1:L}({0}){1:R}", NULL));
+	nfmt(db, "{1:L}({0}){1:R}", NULL);
 
 done:
 	db->cpp_tag_templates = tag_templ_save;
@@ -330,7 +363,7 @@ parse_special_name(const char *first, const char *last, cpp_db_t *db)
 {
 	const char *t = NULL;
 	const char *t1 = NULL;
-	size_t n = name_len(&db->cpp_name);
+	size_t n = nlen(db);
 
 	if (last - first < 2)
 		return (first);
@@ -339,25 +372,23 @@ parse_special_name(const char *first, const char *last, cpp_db_t *db)
 	case 'T':
 		switch (t[1]) {
 		case 'V':
-			CK(name_add(&db->cpp_name, "vtable for", 0, NULL, 0));
+			nadd_l(db, "vtable for", 0);
 			t = parse_type(first + 2, last, db);
 			break;
 		case 'T':
-			CK(name_add(&db->cpp_name, "VTT for", 0, NULL, 0));
+			nadd_l(db, "VTT for", 0);
 			t = parse_type(first + 2, last, db);
 			break;
 		case 'I':
-			CK(name_add(&db->cpp_name, "typeinfo for", 0, NULL, 0));
+			nadd_l(db, "typeinfo for", 0);
 			t = parse_type(first + 2, last, db);
 			break;
 		case 'S':
-			CK(name_add(&db->cpp_name, "typinfo name for", 0, NULL,
-			    0));
+			nadd_l(db, "typeinfo name for", 0);
 			t = parse_type(first + 2, last, db);
 			break;
 		case 'c':
-			CK(name_add(&db->cpp_name, "covariant return thunk to",
-			   0, NULL, 0));
+			nadd_l(db, "covariant return thunk to", 0);
 			t1 = parse_call_offset(first + 2, last);
 			if (t1 == t)
 				return (first);
@@ -376,29 +407,24 @@ parse_special_name(const char *first, const char *last, cpp_db_t *db)
 			if (*t1 != '_')
 				return (first);
 			t = parse_type(t1 + 1, last, db);
-			if (t == t1 + 1 || name_len(&db->cpp_name) < 2)
+			if (t == t1 + 1 || nlen(db) < 2)
 				return (first);
-			CK(name_fmt(&db->cpp_name,
-				"construction vtable for {0}-in-{1}"));
+			nfmt(db, "construction vtable for {0}-in-{1}", NULL);
 			return (t);
 		case 'W':
-			CK(name_add(&db->cpp_name,
-			    "thread-local wrapper routine for", 0, NULL, 0));
+			nadd_l(db, "thread-local wrapper routine for", 0);
 			t = parse_name(first + 2, last, NULL, db);
 			break;
 		case 'H':
-			CK(name_add(&db->cpp_name,
-			    "thread-local initialization routine for", 0, NULL,
-			    0));
+			nadd_l(db, "thread-local initialization routine for",
+			    0);
 			t = parse_name(first + 2, last, NULL, db);
 			break;
 		default:
-			if (first[1] == 'v'){
-				CK(name_add(&db->cpp_name, "virtual thunk to",
-				    0, NULL, 0));
+			if (first[1] == 'v') {
+				nadd_l(db, "virtual thunk to", 0);
 			} else {
-				CK(name_add(&db->cpp_name,
-				    "non-virtual thunk to", 0, NULL, 0));
+				nadd_l(db, "non-virtual thunk to", 0);
 			}
 
 			t = parse_call_offset(first + 1, last);
@@ -413,13 +439,11 @@ parse_special_name(const char *first, const char *last, cpp_db_t *db)
 	case 'G':
 		switch (first[1]) {
 		case 'V':
-			CK(name_add(&db->cpp_name, "guard variable for",
-			    0, NULL, 0));
+			nadd_l(db, "guard variable for", 0);
 			t = parse_name(first + 2, last, NULL, db);
 			break;
 		case 'R':
-			CK(name_add(&db->cpp_name, "reference temporary for",
-			    0, NULL, 0));
+			nadd_l(db, "reference temporary for", 0);
 			t = parse_name(first + 2, last, NULL, db);
 			break;
 		default:
@@ -430,10 +454,10 @@ parse_special_name(const char *first, const char *last, cpp_db_t *db)
 		return (first);
 	}
 
-	if (t == first + 2 || name_len(&db->cpp_name) - n < 2)
+	if (t == first + 2 || nlen(db) - n < 2)
 		return (first);
 
-	CK(name_join(&db->cpp_name, name_len(&db->cpp_name) - n, " "));
+	njoin(db, NAMT(db, n), " ");
 	return (t);
 }
 
@@ -516,7 +540,6 @@ parse_name(const char *first, const char *last,
 	 * <unscoped-name> <template-args>
 	 * <substitution> <template-args>
 	 */
-
 	t1 = parse_unscoped_name(t, last, db);
 
 	/* <unscoped-name> */
@@ -528,14 +551,14 @@ parse_name(const char *first, const char *last,
 		if (t == t1 || t1 == last || t1[0] != 'I')
 			return (first);
 	} else {
-		CK(sub_save_top(&db->cpp_name));
+		save_top(db);
 	}
 
 	t = parse_template_args(t1, last, db);
-	if (t1 == t || name_len(&db->cpp_name) < 2)
+	if (t1 == t || nlen(db) < 2)
 		return (first);
 
-	CK(name_fmt(&db->cpp_name, "{1:L}{0}", "{1:R}"));
+	nfmt(db, "{1:L}{0}", "{1:R}");
 
 	if (ends_with_template_args != NULL)
 		*ends_with_template_args = B_TRUE;
@@ -565,13 +588,13 @@ parse_local_name(const char *first, const char *last,
 	if (t == first + 1 || t == last || t[0] != 'E')
 		return (first);
 
-	ASSERT(!name_empty(&db->cpp_name));
+	ASSERT(!nempty(db));
 
 	/* skip E */
 	t++;
 
 	if (t[0] == 's') {
-		CK(str_append(TOP_L(db), "::string literal", 0));
+		nfmt(db, "{0:L}::string literal", "{0:R}");
 		return (parse_discriminator(t, last));
 	}
 
@@ -588,13 +611,499 @@ parse_local_name(const char *first, const char *last,
 	if (t2 == t1)
 		return (first);
 
-	CK(name_fmt(&db->cpp_name, "{1:L}::{0}", "{1:R}"));
+	nfmt(db, "{1:L}::{0}", "{1:R}");
 
 	/* parsed, but ignored */
 	if (t[0] != 'd')
 		t2 = parse_discriminator(t2, last);
 
 	return (t2);
+}
+
+static const char *
+parse_nested_name(const char *first, const char *last,
+    boolean_t *ends_with_template_args, cpp_db_t *db)
+{
+	// XXX: TODO
+	return (NULL);
+}
+
+/*
+ * <template-arg> ::= <type>                   # type or template
+ *                ::= X <expression> E         # expression
+ *                ::= <expr-primary>           # simple expressions
+ *                ::= J <template-arg>* E      # argument pack
+ *                ::= LZ <encoding> E          # extension
+ */
+static const char *
+parse_template_arg(const char *first, const char *last, cpp_db_t *db)
+{
+	const char *t = NULL;
+	const char *t1 = NULL;
+
+	if (first == last)
+		return (first);
+
+	switch (first[0]) {
+	case 'X':
+		t = parse_expr(first + 1, last, db);
+		if (t == first + 1)
+			return (first);
+		break;
+
+	case 'J':
+		t = first + 1;
+		if (t == last)
+			return (first);
+
+		while (t[0] != 'E') {
+			t1 = parse_template_arg(t, last, db);
+			if (t == t1)
+				return (first);
+			t = t1;
+		}
+		break;
+
+	case 'L':
+		if (first + 1 == last || first[1] != 'Z')
+			t = parse_expr_primary(first + 1, last, db));
+		else
+			t = parse_encoding(first + 2, last, db);
+		break;
+
+	default:
+		t = parse_type(first + 1, last, db);
+	}
+
+	return (t);
+}
+
+/*BEGIN CSTYLED*/
+/*
+ * <expression> ::= <unary operator-name> <expression>
+ *              ::= <binary operator-name> <expression> <expression>
+ *              ::= <ternary operator-name> <expression> <expression> <expression>
+ *              ::= cl <expression>+ E                                   # call
+ *              ::= cv <type> <expression>                               # conversion with one argument
+ *              ::= cv <type> _ <expression>* E                          # conversion with a different number of arguments
+ *              ::= [gs] nw <expression>* _ <type> E                     # new (expr-list) type
+ *              ::= [gs] nw <expression>* _ <type> <initializer>         # new (expr-list) type (init)
+ *              ::= [gs] na <expression>* _ <type> E                     # new[] (expr-list) type
+ *              ::= [gs] na <expression>* _ <type> <initializer>         # new[] (expr-list) type (init)
+ *              ::= [gs] dl <expression>                                 # delete expression
+ *              ::= [gs] da <expression>                                 # delete[] expression
+ *              ::= pp_ <expression>                                     # prefix ++
+ *              ::= mm_ <expression>                                     # prefix --
+ *              ::= ti <type>                                            # typeid (type)
+ *              ::= te <expression>                                      # typeid (expression)
+ *              ::= dc <type> <expression>                               # dynamic_cast<type> (expression)
+ *              ::= sc <type> <expression>                               # static_cast<type> (expression)
+ *              ::= cc <type> <expression>                               # const_cast<type> (expression)
+ *              ::= rc <type> <expression>                               # reinterpret_cast<type> (expression)
+ *              ::= st <type>                                            # sizeof (a type)
+ *              ::= sz <expression>                                      # sizeof (an expression)
+ *              ::= at <type>                                            # alignof (a type)
+ *              ::= az <expression>                                      # alignof (an expression)
+ *              ::= nx <expression>                                      # noexcept (expression)
+ *              ::= <template-param>
+ *              ::= <function-param>
+ *              ::= dt <expression> <unresolved-name>                    # expr.name
+ *              ::= pt <expression> <unresolved-name>                    # expr->name
+ *              ::= ds <expression> <expression>                         # expr.*expr
+ *              ::= sZ <template-param>                                  # size of a parameter pack
+ *              ::= sZ <function-param>                                  # size of a function parameter pack
+ *              ::= sp <expression>                                      # pack expansion
+ *              ::= tw <expression>                                      # throw expression
+ *              ::= tr                                                   # throw with no operand (rethrow)
+ *              ::= <unresolved-name>                                    # f(p), N::f(p), ::f(p),
+ *                                                                       # freestanding dependent name (e.g., T::x),
+ *                                                                       # objectless nonstatic member reference
+ *              ::= <expr-primary>
+ */
+/*END CSTYLED*/
+
+#define PA(cd, arg, fn) {	\
+	.code = cd,		\
+	.p.parse_expr_arg = fn,	\
+	.fntype = EXPR_ARG,	\
+	.val = arg		\
+}
+
+#define PN(cd, fn) {			\
+	.code = cd,			\
+	.p.parse_expr_noarg = fn,	\
+	.fntype = EXPR_NOARG		\
+}
+
+static struct expr_dispatch_s {
+	const char code[3];
+	union {
+		const char *(*parse_expr_arg)(const char *, const char *,
+		    const char *, cpp_db_t *);
+		const char *(*parse_expr_noarg)(const char *, const char *,
+		    cpp_db_t *);
+	} p;
+	enum {
+		EXPR_ARG,
+		EXPR_NOARG
+	} fntype;
+	const char val[4];
+} expr_tbl[] = {
+	PA("aN", "&=", parse_binary_expr),
+	PA("aS", "=", parse_binary_expr),
+	PA("aa", "&&", parse_binary_expr),
+	PA("ad", "&", parse_prefix_expr),
+	PA("an", "&", parse_binary_expr),
+	PN("at", parse_alignof),
+	PN("az", parse_alignof),
+	PN("cc", parse_const_cast_expr),
+	PN("cl", parse_call_expr),
+	PA("cm", ",", parse_binary_expr),
+	PA("co", "~", parse_prefix_expr),
+	PN("cv", parse_conv_expr),
+	PN("da", parse_del_expr),
+	PA("dV", "/=", parse_binary_expr),
+	PN("dc", parse_dynamic_cast_expr),
+	PA("de", "*", parse_prefix_expr),
+	PN("dl", parse_del_expr),
+	PN("dn", parse_unresolved_name),
+	PN("ds", parse_dot_star_expr),
+	PN("dt", parse_dot_expr),
+	PA("dv", "/", parse_binary_expr),
+	PA("eO", "^=", parse_binary_expr),
+	PA("eo", "^", parse_binary_expr),
+	PA("eq", "==", parse_binary_expr),
+	PA("ge", ">=", parse_binary_expr),
+	PN("gs", parse_gs),
+	PA("gt", ">", parse_binary_expr),
+	PN("ix", parse_idx_expr),
+	PA("lS", "<<=", parse_binary_expr),
+	PA("le", "<=", parse_binary_expr),
+	PA("ls", "<<", parse_binary_expr),
+	PA("lt", "<", parse_binary_expr),
+	PA("mI", "-=", parse_binary_expr),
+	PA("mL", "*=", parse_binary_expr),
+	PN("mm", parse_mm_expr),
+	PA("mi", "-", parse_binary_expr),
+	PA("ml", "*", parse_binary_expr),
+	PN("na", parse_new_expr),
+	PA("ne", "!=", parse_binary_expr),
+	PA("ng", "-", parse_prefix_expr),
+	PA("nt", "!", parse_prefix_expr),
+	PN("nw", parse_new_expr),
+	PN("nx", parse_noexcept_expr),
+	PA("oR", "|=", parse_binary_expr),
+	PN("on", parse_unresolved_name),
+	PA("oo", "||", parse_binary_expr),
+	PA("or", "|", parse_binary_expr),
+	PA("pL", "+=", parse_binary_expr),
+	PA("pl", "+", parse_binary_expr),
+	PA("pm", "->*", parse_binary_expr),
+	PN("pp", parse_pp_expr),
+	PA("ps", "+", parse_prefix_expr),
+	PN("pt", parse_arrow_expr),
+	PN("qu", parse_trinary_expr),
+	PA("rM", "%=", parse_binary_expr),
+	PA("rS", ">>=", parse_binary_expr)
+	PN("rc", parse_reinterpret_cast_expr),
+	PA("rm", "%", parse_binary_expr),
+	PA("rs", ">>", parse_binary_expr),
+	PN("sc", parse_static_cast_expr),
+	PN("sp", parse_pack_expansion),
+	PN("sr", parse_unresolved_name),
+	PN("st", parse_sizeof_type_expr),
+	PN("sz", parse_sizeof_expr_expr),
+	PN("te", parse_typeid_expr),
+	PN("tw", parse_throw_expr)
+};
+#undef PA
+#undef PN
+
+static const char *
+parse_expression(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 2)
+		return (first);
+
+	for (size_t i = 0; i < ARRAY_SIZE(expr_tbl); i++) {
+		if (strcmp(expr_tbl[i].code, first) != 0)
+			continue;
+		switch (expr_tbl[i].fntype) {
+		case EXPR_ARG:
+			return (expr_tbl[i].p.parse_expr_arg(first, last, expr_tbl[i].val, db));
+		case EXPR_NOARG:
+			return (expr_tbl[i].p.parse_expr_noarg(first, last, db));
+		}
+	}
+
+	switch (first[0]) {
+	case 'L':
+		return (parse_expr_primary(first, last, db));
+	case 'T':
+		return (parse_template_param(first, last, db));
+	case 'f':
+		return (parse_function_param(first, last, db));
+	case '1':
+	case '2':
+	case '3':
+	case '4':
+	case '5':
+	case '6':
+	case '7':
+	case '8':
+	case '9':
+		return (parse_unresolved_name(first, last, db));
+	}
+
+	return (first);
+}
+
+static const char *
+parse_binary_expr(const char *first, const char *last, const char *op,
+    cpp_db_t *db)
+{
+	if (last - first < 2)
+		return (first);
+
+	const char *t1 = parse_expression(first + 2, last, db);
+	if (t1 == first + 2)
+		return (first);
+
+	nadd_l(db, op, 0);
+
+	const char *t2 = parse_expression(t1, last, db);
+	if (t2 == t1)
+		return (first);
+
+	nfmt(db, "({2}) {1} ({0})", NULL);
+	if (strcmp(op, ">") == 0)
+		nfmt(db, "({0})", NULL);
+
+	return (t2);
+}
+
+static const char *
+parse_prefix_expr(const char *first, const char *last, const char *op,
+    cpp_db_t *db)
+{
+	if (last - first < 2)
+		return (first);
+
+	nadd_l(db, op, 0);
+
+	const char *t = parse_expression(first + 2);
+	if (t == first + 2)
+		return (first);
+
+	nfmt(db, "{1}({0})", NULL);
+	return (t);
+}
+
+static const char *
+parse_gs(const char *first, const char *last, cpp_db_t *db)
+{
+	const char *t = NULL;
+
+	if (last - first < 4)
+		return (first);
+
+	if (first[2] == 'n')
+		t = parse_new_expr(first + 2, last, db);
+	else if (first[2] == 'd')
+		t = parse_del_expr(first + 2, last, db);
+
+	if (t == first + 2)
+		return (first);
+
+	nfmt(db, "::{0}", NULL);
+	return (t);
+}
+
+static const char *
+parse_idx_expr(const char *first, const char *last, cpp_db_t *db)
+{
+	ASSERT3U(first[0], ==, 'i');
+	ASSERT3U(first[1], ==, 'x');
+
+	const char *t1 = parse_expression(first + 2, last, db);
+	if (t1 == first + 2)
+		return (first);
+
+	const char *t2 = parse_expression(t1, last, db);
+	if (t2 == t1)
+		return (first);
+
+	name_fmt(db, "({0})[{1}]", NULL);
+	return (t2);
+}
+
+static const char *
+parse_ppmm_expr(const char *first, const char *last, const char *fmt,
+    cpp_db_t *db)
+{
+	if (last - first < 3)
+		return (first);
+
+	const char *t = NULL;
+	size_t n = nlen(db);
+
+	if (first[2] == '_') {
+		t = parse_binary_expr(first + 3, last, "--", db);
+		if (t == first + 2)
+			return (first);
+		return (t);
+	}
+
+	t = parse_expression(first + 2, last, db);
+	if (t == first + 2 || NAMT(db, n) < 1)
+		return (first);
+
+	nfmt(db, fmt, NULL);
+	return (t);
+}
+
+static const char *
+parse_mm_expr(const char *first, const char *last, cpp_db_t *db)
+{
+	ASSERT3U(first[0], ==, 'm');
+	ASSERT3U(first[1], ==, 'm');
+
+	return (parse_ppmm_expr(first, last, "({0})--", db));
+}
+
+static const char *
+parse_pp_expr(const char *first, const char *last, cpp_db_t *db)
+{
+	ASSERT3U(first[0], ==, 'p');
+	ASSERT3U(first[0], ==, 'p');
+
+	return (parse_ppmm_expr(first, last, "({0})++", db));
+}
+
+static const char *
+parse_trinary_expr(const char *first, const char *last, cpp_db_t *db)
+{
+	const char *t1, *t2, *t3;
+
+	if (last - first < 2)
+		return (first);
+
+	t1 = parse_expression(first + 2, last, db);
+	if (t1 == first + 2)
+		return (first);
+	t2 = parse_expression(t1, last, db);
+	if (t1 == t2)
+		return (first);
+	t3 = parse_expression(t2, last, db);
+	if (t3 == t2)
+		return (first);
+
+	nfmt(db, "({2}) ? ({1}) : ({0})", NULL);
+	return (t3);
+}
+
+static const char *
+parse_noexcept_expr(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 2)
+		return (first);
+
+	const char *t = parse_expression(first + 2, last, db);
+	if (t == first + 2)
+		return (first);
+
+	nfmt(db, "noexcept ({0})", NULL);
+	return (t);
+}
+
+/*
+ * at <type>		# alignof (a type)
+ * az <expression>	# alignof (a expression)
+ */
+static const char *
+parse_alignof(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 2)
+		return (first);
+
+	const char *(*)(const char *, const char *, cpp_db_t *) fn;
+
+	fn = (first[1] == 't') ? parse_type : parse_expression;
+
+	const char *t = fn(first + 2, last, db);
+	if (t == first + 2)
+		return (first);
+
+	nfmt(db, "alignof ({0})", NULL);
+	return (t);
+}
+
+/*
+ * <unscoped-name> ::= <unqualified-name>
+ *                 ::= St <unqualified-name>   # ::std::
+ * extension       ::= StL<unqualified-name>
+ */
+static const char *
+parse_unscoped_name(const char *first, const char *last, cpp_db_t *db)
+{
+	if (first - last < 2)
+		return (first);
+
+	const char *t = NULL;
+	const char *t1 = NULL;
+	boolean_t st = B_FALSE;
+
+	if (first[0] == 'S' && first[1] == 't') {
+		st = B_TRUE;
+		nadd_l(db, "std::", 5);
+		t = first + 2;
+
+		if (first + 3 != last && first[2] == 'L')
+			t++;
+	}
+
+	t1 = parse_unqualified_name(t, last, db);
+	if (t == t1)
+		return (first);
+
+	if (st)
+		njoin(db, 2, "");
+
+	return (t1);
+}
+
+/*
+ * <unqualified-name> ::= <operator-name>
+ *                    ::= <ctor-dtor-name>
+ *                    ::= <source-name>
+ *                    ::= <unnamed-type-name>
+ */
+const char *
+parse_unqualified_name(const char* first, const char* last, cpp_db_t *db)
+{
+	if (first == last)
+		return (first);
+
+	switch (*first) {
+	case 'C':
+	case 'D':
+		return(parse_ctor_dtor_name(first, last, db));
+	case 'U':
+		return (parse_unnamed_type_name(first, last, db));
+
+	case '1':
+	case '2':
+	case '3':
+	case '4':
+	case '5':
+	case '6':
+	case '7':
+	case '8':
+	case '9':
+		return (parse_source_name(first, last, db));
+	default:
+		return (parse_operator_name(first, last, db))
+	}
 }
 
 /*
@@ -688,8 +1197,46 @@ is_digit(int c)
 	return (B_TRUE);
 }
 
+static boolean_t
+nempty(cpp_db_t *db)
+{
+	return (name_empty(&db->cpp_name));
+}
+
+static size_t
+nlen(cpp_db_t *db)
+{
+	return (name_len(&db->cpp_name));
+}
+
 static void
-db_init(cpp_db_t *db, sysdem_alloc_t *ops)
+nadd_l(cpp_db_t *db, const char *s, size_t len)
+{
+	CK(name_add(&db->cpp_name, s, len, NULL, 0));
+}
+
+static void
+njoin(cpp_db_t *db, size_t amt, const char *sep)
+{
+	name_t *nm = &db->cpp_name;
+
+	CK(name_join(nm, amt, sep));
+}
+
+static void
+nfmt(cpp_db_t *db, const char *fmt_l, const char *fmt_r)
+{
+	CK(name_fmt(&db->cpp_name, fmt_l, fmt_r));
+}
+
+static void
+save_top(cpp_db_t *db)
+{
+	CK(sub_save(&db->cpp_subs, &db->cpp_name, 1));
+}
+
+static void
+db_init(cpp_db_t *db, sysdem_ops_t *ops)
 {
 	(void) memset(db, 0, sizeof (*db));
 	db->cpp_ops = ops;

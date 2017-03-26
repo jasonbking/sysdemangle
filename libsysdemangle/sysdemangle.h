@@ -42,6 +42,7 @@ typedef enum {
 } boolean_t;
 
 #define roundup(x, y) ((((x)+((y)-1))/(y))*(y))
+#define ARRAY_SIZE(x) (sizeof (x) / sizeof (x[0]))
 
 #else
 #include <sys/debug.h>
@@ -49,13 +50,11 @@ typedef enum {
 #endif /* __sun */
 
 typedef struct sysdem_alloc_s {
-	void *(*zalloc)(size_t);
+	void *(*alloc)(size_t);
 	void (*free)(void *, size_t);
-} sysdem_alloc_t;
-
-extern sysdem_alloc_t *sysdem_alloc_default;
+} sysdem_ops_t;
 	
-char *sysdemangle(const char *, sysdem_alloc_t *);
+char *sysdemangle(const char *, sysdem_ops_t *);
 
 #ifdef __cplusplus
 }

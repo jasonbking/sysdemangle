@@ -19,13 +19,18 @@
 #include "util.h"
 
 void *
-zalloc(sysdem_alloc_t *ops, size_t len)
+zalloc(sysdem_ops_t *ops, size_t len)
 {
-	return (ops->zalloc(len));
+	void *p = ops->alloc(len);
+
+	if (p != NULL)
+		(void) memset(p, 0, len);
+
+	return (p);
 }
 
 void
-sysdemfree(sysdem_alloc_t *ops, void *p, size_t len)
+xfree(sysdem_ops_t *ops, void *p, size_t len)
 {
 	if (p == NULL || len == 0)
 		return;
@@ -34,10 +39,11 @@ sysdemfree(sysdem_alloc_t *ops, void *p, size_t len)
 }
 
 void *
-sysdem_realloc(sysdem_alloc_t *ops, void *p, size_t oldsz, size_t newsz)
+xrealloc(sysdem_ops_t *ops, void *p, size_t oldsz, size_t newsz)
 {
 	if (newsz == oldsz)
 		return (p);
+
 	ASSERT3U(newsz, >, oldsz);
 
 	void *temp = zalloc(ops, newsz);
@@ -45,16 +51,12 @@ sysdem_realloc(sysdem_alloc_t *ops, void *p, size_t oldsz, size_t newsz)
 	if (temp == NULL)
 		return (NULL);
 
-	(void) memcpy(temp, p, oldsz);
-	sysdemfree(ops, p, oldsz);
-
+	if (oldsz > 0) {
+		(void) memcpy(temp, p, oldsz);
+		xfree(ops, p, oldsz);
+	}
+	
 	return (temp);
-}
-
-static void *
-def_zalloc(size_t len)
-{
-	return (calloc(1, len));
 }
 
 /*ARGSUSED*/
@@ -64,7 +66,7 @@ def_free(void *p, size_t len)
 	free(p);
 }
 
-sysdem_alloc_t *sysdem_alloc_default = &(sysdem_alloc_t){
-	.zalloc = def_zalloc,
+sysdem_ops_t *sysdem_ops_default = &(sysdem_ops_t) {
+	.alloc = malloc,
 	.free = def_free
 };

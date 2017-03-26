@@ -35,7 +35,7 @@
  */
 
 void
-name_init(name_t *n, sysdem_alloc_t *ops)
+name_init(name_t *n, sysdem_ops_t *ops)
 {
 	(void) memset(n, 0, sizeof (*n));
 	n->nm_ops = ops;
@@ -48,7 +48,7 @@ name_fini(name_t *n)
 		return;
 
 	name_clear(n);
-	sysdemfree(n->nm_ops, n->nm_items, n->nm_size);
+	xfree(n->nm_ops, n->nm_items, n->nm_size);
 	n->nm_items = NULL;
 	n->nm_size = 0;
 }
@@ -71,8 +71,13 @@ name_clear(name_t *n)
 	if (n == NULL)
 		return;
 
-	for (size_t i = 0; i < n->nm_len; i++)
-		str_pair_fini(&n->nm_items[i]);
+	for (size_t i = 0; i < n->nm_len; i++) {
+		str_pair_t *sp = &n->nm_items[i];
+		sysdem_ops_t *ops = sp->strp_l.str_ops;
+
+		str_pair_fini(sp);
+		str_pair_init(sp, ops);
+	}
 
 	n->nm_len = 0;
 }
@@ -86,8 +91,8 @@ name_reserve(name_t *n, size_t amt)
 		return (B_TRUE);
 
 	size_t newsize = roundup(newlen, CHUNK_SIZE);
-	void *temp = sysdem_realloc(n->nm_ops, n->nm_items, n->nm_size,
-	    newsize);
+	void *temp = xrealloc(n->nm_ops, n->nm_items,
+	    n->nm_size * sizeof (str_pair_t), newsize * sizeof (str_pair_t));
 
 	if (temp == NULL)
 		return (B_FALSE);
@@ -103,18 +108,19 @@ name_add(name_t *n, const char *l, size_t l_len, const char *r, size_t r_len)
 	str_t sl = { 0 };
 	str_t sr = { 0 };
 
-	str_init(&sl, n->nm_ops, l, l_len);
-	str_init(&sr, n->nm_ops, r, r_len);
+	str_init(&sl, n->nm_ops);
+	str_init(&sr, n->nm_ops);
+	str_set(&sl, l, l_len);
+	str_set(&sr, r, r_len);
 	return (name_add_str(n, &sl, &sr));
 }
 
 boolean_t
 name_add_str(name_t *n, str_t *l, str_t *r)
 {
-	str_pair_t sp = {
-		.strp_l.str_ops = n->nm_ops,
-		.strp_r.str_ops = n->nm_ops
-	};
+	str_pair_t sp;
+
+	str_pair_init(&sp, n->nm_ops);
 
 	if (!name_reserve(n, 1))
 		return (B_FALSE);
@@ -161,7 +167,6 @@ name_pop(name_t *n, str_pair_t *sp)
 	if (sp != NULL) {
 		*sp = *top;
 		(void) memset(top, 0, sizeof (*top));
-
 	} else {
 		str_pair_fini(top);
 	}
@@ -179,6 +184,7 @@ name_join(name_t *n, size_t amt, const char *sep)
 
 	ASSERT3U(amt, <=, n->nm_len);
 
+	/* a join of 0 elements just implies merging the top str_pair_t */
 	if (amt == 0) {
 		if (n->nm_len > 0) {
 			return (str_pair_merge(name_top(n)));
@@ -186,7 +192,7 @@ name_join(name_t *n, size_t amt, const char *sep)
 		return (B_TRUE);
 	}
 
-	(void) str_init(&res, n->nm_ops, NULL, 0);
+	(void) str_init(&res, n->nm_ops);
 
 	sp = name_at(n, n->nm_len - amt);
 	for (size_t i = 0; i < amt; i++) {
@@ -325,7 +331,7 @@ error:
  * is also a copy operation.
  */
 void
-sub_init(sub_t *sub, sysdem_alloc_t *ops)
+sub_init(sub_t *sub, sysdem_ops_t *ops)
 {
 	(void) memset(sub, 0, sizeof (*sub));
 	sub->sub_ops = ops;
@@ -338,7 +344,7 @@ sub_fini(sub_t *sub)
 		return;
 
 	sub_clear(sub);
-	sysdemfree(sub->sub_ops, sub->sub_items, sub->sub_size);
+	xfree(sub->sub_ops, sub->sub_items, sub->sub_size);
 	sub->sub_items = NULL;
 	sub->sub_size = 0;
 }
@@ -346,8 +352,11 @@ sub_fini(sub_t *sub)
 void
 sub_clear(sub_t *sub)
 {
-	for (size_t i = 0; i < sub->sub_len; i++)
+	for (size_t i = 0; i < sub->sub_len; i++) {
+		sysdem_ops_t *ops = sub->sub_items[i].nm_ops;
 		name_fini(&sub->sub_items[i]);
+		name_init(&sub->sub_items[i], ops);
+	}
 	sub->sub_len = 0;
 }
 
@@ -364,7 +373,7 @@ sub_reserve(sub_t *sub, size_t amt)
 		return (B_TRUE);
 
 	size_t newsize = roundup(sub->sub_size, CHUNK_SIZE);
-	void *temp = sysdem_realloc(sub->sub_ops, sub->sub_items,
+	void *temp = xrealloc(sub->sub_ops, sub->sub_items,
 	    sub->sub_size * sizeof (name_t), newsize * sizeof (name_t));
 
 	if (temp == NULL)
@@ -379,40 +388,36 @@ sub_reserve(sub_t *sub, size_t amt)
 	return (B_TRUE);
 }
 
+/* save the element of n (up to depth elements deep) as a substitution */
 boolean_t
-sub_save_top(sub_t *sub, const name_t *n)
+sub_save(sub_t *sub, const name_t *n, size_t depth)
 {
-	ASSERT(!name_empty(n));
-
-	const str_pair_t *top = &n->nm_items[n->nm_len - 1];
-	str_t l, r;
-
-	str_init(&l, sub->sub_ops, NULL, 0);
-	str_init(&r, sub->sub_ops, NULL, 0);
-
 	if (!sub_reserve(sub, 1))
 		return (B_FALSE);
 
-	if (!str_append_str(&l, &top->strp_l) ||
-	    !str_append_str(&r, &top->strp_r)) {
-		str_fini(&l);
-		str_fini(&r);
+	name_t *dest = &sub->sub_items[sub->sub_len];
+	if (!name_reserve(dest, depth))
 		return (B_FALSE);
+
+	str_pair_t *src_sp = name_at((name_t *)n, depth);
+
+	for (size_t i = 0; i < depth; i++, src_sp++) {
+		str_pair_t copy;
+		str_pair_init(&copy, n->nm_ops);
+		if (!str_pair_copy(src_sp, &copy)) {
+			str_pair_fini(&copy);
+			name_fini(dest);
+			return (B_FALSE);
+		}
+
+		VERIFY(name_add_str(dest, &copy.strp_l, &copy.strp_r));
 	}
 
-	name_t *newname = &sub->sub_items[sub->sub_len];
-
 	return (B_TRUE);
 }
 
 boolean_t
-sub_save(sub_t *sub, const name_t *n)
-{
-	return (B_TRUE);
-}
-
-boolean_t
-sub_substitute(sub_t *sub, size_t idx, name_t *n)
+sub_substitute(const sub_t *sub, size_t idx, name_t *n)
 {
 	return (B_TRUE);
 }
