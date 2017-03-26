@@ -43,6 +43,7 @@ typedef struct cpp_db_s {
 #define NAMT(db, n) (nlen(db) - n)
 
 static inline boolean_t is_digit(int);
+static inline boolean_t is_upper(int);
 
 static boolean_t nempty(cpp_db_t *);
 static size_t nlen(cpp_db_t *);
@@ -51,6 +52,7 @@ static void njoin(cpp_db_t *, size_t, const char *);
 static void nfmt(cpp_db_t *, const char *, const char *);
 
 static void save_top(cpp_db_t *);
+static void sub(cpp_db_t *, size_t);
 
 static void db_init(cpp_db_t *, sysdem_ops_t *);
 static void db_fini(cpp_db_t *);
@@ -582,13 +584,13 @@ parse_name(const char *first, const char *last,
 	return (t);
 }
 
-/*BEGIN CSTYLED*/
 /*
+ *BEGIN CSTYLED
  * <local-name> := Z <function encoding> E <entity name> [<discriminator>]
  *              := Z <function encoding> E s [<discriminator>]
  *              := Z <function encoding> Ed [ <parameter number> ] _ <entity name>
+ *END CSTYLED
  */
-/*END CSTYLED*/
 const char *
 parse_local_name(const char *first, const char *last,
     boolean_t *ends_with_template_args, cpp_db_t *db)
@@ -636,12 +638,161 @@ parse_local_name(const char *first, const char *last,
 	return (t2);
 }
 
+// <nested-name> ::= N [<CV-qualifiers>] [<ref-qualifier>] <prefix> <unqualified-name> E
+//               ::= N [<CV-qualifiers>] [<ref-qualifier>] <template-prefix> <template-args> E
+//
+// <prefix> ::= <prefix> <unqualified-name>
+//          ::= <template-prefix> <template-args>
+//          ::= <template-param>
+//          ::= <decltype>
+//          ::= # empty
+//          ::= <substitution>
+//          ::= <prefix> <data-member-prefix>
+//  extension ::= L
+//
+// <template-prefix> ::= <prefix> <template unqualified-name>
+//                   ::= <template-param>
+//                   ::= <substitution>
 static const char *
 parse_nested_name(const char *first, const char *last,
     boolean_t *ends_with_template_args, cpp_db_t *db)
 {
-	// XXX: TODO
-	return (NULL);
+	if (first == last || first[0] != 'N')
+		return (first);
+
+	unsigned cv = 0;
+	const char *t = parse_cv_qualifiers(first + 1, last, &cv);
+
+	if (t == last)
+		return (first);
+
+	switch (t[0]) {
+		case 'R':
+			db->cpp_ref = 1;
+			t++;
+			break;
+		case 'O':
+			db->cpp_ref = 2;
+			t++;
+			break;
+		case 'S':
+			if (last - first < 2 || t[1] != 't')
+				break;
+			if (last - first == 2)
+				return (first);
+			nadd_l(db, "std", 3);
+			t += 2;
+			break;
+	}
+
+	boolean_t more = B_FALSE;
+	boolean_t pop_subs = B_FALSE;
+	boolean_t component_ends_with_template_args = B_FALSE;
+
+	while (t[0] != 'E' && t != last) {
+		const char *t1 = NULL;
+		component_ends_with_template_args = B_FALSE;
+
+		switch (t[0]) {
+			case 'S':
+				if (t + 1 != last && t[1] == 't')
+					break;
+
+				t1 = parse_substitution(t, last, db);
+				if (t1 == t || t1 == last || nempty(db))
+					return (first);
+
+				if (!more)
+					nfmt(db, "{0}", NULL);
+				else
+					nfmt(db, "{1:L}::{0}", "{1:R}");
+
+				save_top(db);
+				more = B_TRUE;
+				pop_subs = B_TRUE;
+				t = t1;
+				continue;
+
+			case 'T':
+				t1 = parse_template_param(t, last, db);
+				if (t1 == t || t1 == last || nempty(db))
+					return (first);
+
+				if (!more)
+					nfmt(db, "{0}", NULL);
+				else
+					nfmt(db, "{1:L}::{0}", "{1:R}");
+
+				save_top(db);
+				more = B_TRUE;
+				pop_subs = B_TRUE;
+				t = t1;
+				continue;
+
+			case 'D':
+				if (t + 1 != last && t[1] != 't' && t[1] != 'T')
+					break;
+				t1 = parse_decltype(t, last, db);
+				if (t1 == t || t1 == last || nempty(db))
+					return (first);
+
+				if (!more)
+					nfmt(db, "{0}", NULL);
+				else
+					nfmt(db, "{1:L}::{0}", "{1:R}");
+
+				save_top(db);
+				more = B_TRUE;
+				pop_subs = B_TRUE;
+				t = t1;
+				continue;
+
+			case 'I':
+				t1 = parse_template_args(t, last, db);
+				if (t1 == t || t1 == last)
+					return (first);
+
+				nfmt(db, "{1:L}{0}", "{1:R}");
+				save_top(db);
+				t = t1;
+				component_ends_with_template_args = B_TRUE;
+				continue;
+
+			case 'L':
+				if (t + 1 == last)
+					return (first);
+				goto done;
+
+			default:
+				break;
+		}
+
+		t1 = parse_unqualified_name(t, last, db);
+		if (t1 == t || t1 == last || nempty(db))
+			return (first);
+
+		if (!more)
+			nfmt(db, "{0}", NULL);
+		else
+			nfmt(db, "{1:L}::{0}", "{1:R}");
+
+		save_top(db);
+		more = B_TRUE;
+		pop_subs = B_TRUE;
+		t = t1;
+	}
+
+
+
+done:
+	db->cpp_cv = cv;
+	if (pop_subs && sub_empty(&db->cpp_subs))
+		;//pop sub
+	
+	if (ends_with_template_args != NULL)
+		*ends_with_template_args = component_ends_with_template_args;
+	
+	return (t + 1);
 }
 
 /*
@@ -2039,6 +2190,193 @@ parse_operator_name(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
+struct type_tbl_s {
+	int code;
+	const char *name;
+};
+
+static struct type_tbl_s type_tbl1[] = {
+	{ 'a', "signed char" },
+	{ 'b', "bool" },
+	{ 'c', "char" },
+	{ 'd', "double" },
+	{ 'e', "long double" },
+	{ 'f', "float" },
+	{ 'g', "__float128" },
+	{ 'h', "unsigned char" },
+	{ 'i', "int" },
+	{ 'j', "unsigned int" },
+	{ 'l', "long" },
+	{ 'm', "unsigned long" },
+	{ 'n', "__int128" },
+	{ 'o', "unsigned __int128" },
+	{ 's', "short" },
+	{ 't', "unsigned short" },
+	{ 'v', "void" },
+	{ 'w', "wchar_t" },
+	{ 'x', "long long" },
+	{ 'y', "unsigned long long" },
+	{ 'z', "..." }
+};
+
+static struct type_tbl_s type_tbl2[] = {
+	{ 'a', "auto" },
+	{ 'c', "decltype(auto)" },
+	{ 'd', "decimal64" },
+	{ 'e', "decimal128" },
+	{ 'f', "decimal32" },
+	{ 'h', "decimal16" },
+	{ 'i', "char32_t" },
+	{ 'n', "std::nullptr_t" },
+	{ 's', "char16_t" }
+};
+
+static const char *
+parse_builtin_type(const char *first, const char *last, cpp_db_t *db)
+{
+	if (first == last)
+		return (first);
+
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(type_tbl1); i++) {
+		if (first[0] == type_tbl1[i].code) {
+			nadd_l(db, type_tbl1[i].name, 0);
+			return (first + 1);
+		}
+	}
+
+	if (first[0] == 'D') {
+		if (first + 1 == last)
+			return (first);
+		for (i = 0; i < ARRAY_SIZE(type_tbl2); i++) {
+			if (first[1] == type_tbl2[i].code) {
+				nadd_l(db, type_tbl2[i].name, 0);
+				return (first + 2);
+			}
+		}
+	}
+
+	if (first[0] == 'u') {
+		const char *t = parse_source_name(first + 1, last, db);
+		if (t == first + 1)
+			return (first);
+		return (t);
+	}
+
+	return (first);
+}
+
+static const char *
+parse_base36(const char *first, const char *last, size_t *val)
+{
+	const char *t;
+
+	for (t = first, *val = 0; t != last; t++) {
+		if (!is_digit(t[0]) && !is_upper(t[0]))
+			return (t);
+
+		*val *= 36;
+
+		if (is_digit(t[0]))
+			*val += t[0] - '0';
+		else
+			*val += t[0] - 'A';
+	}
+	return (t);
+}
+
+static struct type_tbl_s sub_tbl[] = {
+	{ 'a', "std::allocator" },
+	{ 'b', "std::basic_string" },
+	{ 's', "std::string" },
+	{ 'i', "std::istream" },
+	{ 'o', "std::ostream" },
+	{ 'd', "std::iostream" }
+};
+
+static const char *
+parse_substitution(const char *first, const char *last, cpp_db_t *db)
+{
+	if (first == last || last - first < 2)
+		return (first);
+
+	ASSERT3U(first[0], ==, 'S');
+
+	for (size_t i = 0; i < ARRAY_SIZE(sub_tbl); i++) {
+		if (first[1] == sub_tbl[i].code) {
+			nadd_l(db, sub_tbl[i].name, 0);
+			return (first + 2);
+		}
+	}
+
+	if (first[1] == '_') {
+		sub(db, 0);
+		return (first +2);
+	}
+
+	size_t n = 0;
+	const char *t = parse_base36(first + 1, last, &n);
+	if (t == first + 1 || t[0] != '_')
+		return (first);
+
+	/*
+	 * S_ == substitution 0,
+	 * S0_ == substituion 1,
+	 * ...
+	 */
+	sub(db, n + 1);
+
+	/* skip _ */
+	return (t + 1);
+}
+
+static const char *
+parse_source_name(const char *first, const char *last, cpp_db_t *db)
+{
+	if (first == last)
+		return (first);
+
+	const char *t;
+	size_t n = 0;
+
+	for (t = first; t != last && is_digit(t[0]); t++) {
+		n *= 10;
+		n += t[0] - '0';
+	}
+	if (n == 0 || t == last)
+		return (first);
+
+	if (strncmp(t, "_GLOBAL__N", 10) == 0)
+		nadd_l(db, "(anonymous namespace)", 0);
+	else
+		nadd_l(db, t, n);
+
+	return (t + n);
+}
+
+// <decltype>  ::= Dt <expression> E  # decltype of an id-expression or class member access (C++0x)
+//             ::= DT <expression> E  # decltype of an expression (C++0x)
+
+static const char *
+parse_decltype(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 4)
+		return (first);
+
+	ASSERT3U(first[0], ==, 'D');
+	ASSERT(first[1] == 't' || first[1] == 'T');
+
+	const char *t = parse_expression(first + 2, last, db);
+	if (t == first + 2 || t == last || t[0] != 'E')
+		return (first);
+
+	nfmt(db, "decltype({0})", NULL);
+
+	/* skip E */
+	return (t + 1);
+}
+
 /*
  * <discriminator> := _ <non-negative number>      # when number < 10
  *                 := __ <non-negative number> _   # when number >= 10
@@ -2130,6 +2468,14 @@ is_digit(int c)
 	return (B_TRUE);
 }
 
+static inline boolean_t
+is_upper(int c)
+{
+	if (c < 'A' || c > 'Z')
+		return (B_FALSE);
+	return (B_TRUE);
+}
+
 static boolean_t
 nempty(cpp_db_t *db)
 {
@@ -2166,6 +2512,12 @@ static void
 save_top(cpp_db_t *db)
 {
 	CK(sub_save(&db->cpp_subs, &db->cpp_name, 1));
+}
+
+static void
+sub(cpp_db_t *db, size_t n)
+{
+	CK(sub_substitute(&db->cpp_subs, n, &db->cpp_name));
 }
 
 static void

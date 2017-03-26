@@ -416,9 +416,18 @@ sub_save(sub_t *sub, const name_t *n, size_t depth)
 	return (B_TRUE);
 }
 
+/* push substitution idx onto n */
 boolean_t
 sub_substitute(const sub_t *sub, size_t idx, name_t *n)
 {
+	name_t *src = &sub->sub_items[idx];
+
+	for (size_t i = 0; i < src->nm_len; i++) {
+		if (!name_add_str(n, &src->nm_items[i].strp_l,
+		    &src->nm_items[i].strp_r))
+			return (B_FALSE);
+	}
+	
 	return (B_TRUE);
 }
 
