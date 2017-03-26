@@ -95,7 +95,6 @@ static const char *parse_new_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_del_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_cast_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_sizeof_param_pack_expr(const char *, const char *, cpp_db_t *);
-static const char *parse_sizeof_function_param_pack_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_typeid_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_throw_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_dot_star_expr(const char *, const char *, cpp_db_t *);
@@ -830,6 +829,7 @@ static struct {
 	PN("sr", parse_unresolved_name),
 	PN("st", parse_sizeof),
 	PN("sz", parse_sizeof),
+	PN("sZ", parse_sizeof_param_pack_expr),
 	PN("te", parse_typeid_expr),
 	PN("tr", parse_throw_expr),
 	PN("tw", parse_throw_expr)
@@ -1166,6 +1166,25 @@ parse_cast_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t2);
 }
 
+// pt <expression> <expression>                    # expr->name
+static const char *
+parse_arrow_expr(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 4)
+		return (first);
+
+	const char *t1 = parse_expression(first + 2, last, db);
+	if (t1 == first + 2)
+		return (first);
+
+	const char *t2 = parse_expression(t1, last, db);
+	if (t2 == t1)
+		return (first);
+
+	nfmt(db, "{1}->{0}", NULL);
+	return (t2);
+}
+
 /*
  * at <type>		# alignof (a type)
  * az <expression>	# alignof (a expression)
@@ -1219,7 +1238,8 @@ parse_sizeof(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
-// sZ <template-param>                                  # size of a parameter pack
+// sZ <template-param>		# size of a parameter pack
+// sZ <function-param>		# size of a function parameter pack
 static const char *
 parse_sizeof_param_pack_expr(const char *first, const char *last, cpp_db_t *db)
 {
@@ -1229,30 +1249,21 @@ parse_sizeof_param_pack_expr(const char *first, const char *last, cpp_db_t *db)
 	ASSERT3U(first[0], ==, 's');
 	ASSERT3U(first[1], ==, 'Z');
 
+	if (first[2] != 'T' && first[2] != 'f')
+		return (first);
+
+	const char *t = NULL;
 	size_t n = nlen(db);
-	const char *t = parse_template_param(first + 2, last, db);
+
+	if (first[2] == 'T')
+		t = parse_template_param(first + 2, last, db);
+	else
+		t = parse_function_param(first + 2, last, db);
+
 	if (t == first + 2)
 		return (first);
 
 	njoin(db, NAMT(db, n), ", ");
-	nfmt(db, "sizeof...({0})", NULL);
-	return (t);
-}
-
-// sZ <function-param>                                  # size of a function parameter pack
-static const char *
-parse_sizeof_function_param_pack_expr(const char *first, const char *last, cpp_db_t *db)
-{
-	if (last - first < 3)
-		return (first);
-
-	ASSERT3U(first[0], ==, 's');
-	ASSERT3U(first[1], ==, 'Z');
-
-	const char *t = parse_function_param(first + 2, last, db);
-	if (t == first + 2)
-		return (first);
-
 	nfmt(db, "sizeof...({0})", NULL);
 	return (t);
 }
