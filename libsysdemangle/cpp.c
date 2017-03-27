@@ -116,6 +116,7 @@ static const char *parse_ctor_dtor_name(const char *, const char *, cpp_db_t *);
 static const char *parse_source_name(const char *, const char *, cpp_db_t *);
 static const char *parse_operator_name(const char *, const char *, cpp_db_t *);
 static const char *parse_pack_expansion(const char *, const char *, cpp_db_t *);
+static const char *parse_unresolved_type(const char *, const char *, cpp_db_t *);
 
 char *
 cpp_demangle(const char *src, sysdem_ops_t *ops)
@@ -1604,6 +1605,24 @@ parse_simple_id(const char *first, const char *last, cpp_db_t *db)
 	return (t1);
 }
 
+// <destructor-name> ::= <unresolved-type>                               # e.g., ~T or ~decltype(f())
+//                   ::= <simple-id>                                     # e.g., ~A<2*N>
+static const char *
+parse_destructor_type(const char *first, const char *last, cpp_db_t *db)
+{
+	if (first == last)
+		return (first);
+
+	const char *t = parse_unresolved_type(first, last, db);
+
+	if (first != t) {
+		nfmt(db, "~{0:L}", "{0:R}");
+		return (t);
+	}
+
+	return (parse_simple_id(first, last, db));
+}
+
 // sp <expression>                                  # pack expansion
 static const char *
 parse_pack_expansion(const char *first, const char *last, cpp_db_t *db)
@@ -2517,6 +2536,77 @@ parse_pointer_to_member_type(const char *first, const char *last, cpp_db_t *db)
 		nfmt(db, "{0:L} {1}::*", "{0:R}");
 
 	return (t2);
+}
+
+//  <ref-qualifier> ::= R                   # & ref-qualifier
+//  <ref-qualifier> ::= O                   # && ref-qualifier
+
+// <function-type> ::= F [Y] <bare-function-type> [<ref-qualifier>] E
+static const char *
+parse_function_type(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 2)
+		return (first);
+
+	ASSERT3U(first[0], ==, 'F');
+
+	const char *t = first + 1;
+
+	/* extern "C" */
+	if (t[0] == 'Y')
+		t++;
+
+	const char *t1 = parse_type(t, last, db);
+	if (t1 == t)
+		return (first);
+
+	size_t n = nlen(db);
+	int ref_qual = 0;
+
+	while (t != last && t[0] != 'E') {
+		if (t[0] == 'v') {
+			t++;
+			continue;
+		}
+
+		if (t[0] == 'R' && t + 1 != last && t[1] == 'E') {
+			ref_qual = 1;
+			t++;
+			continue;
+		}
+
+		if (t[0] == 'O' && t + 1 != last && t[1] == 'E') {
+			ref_qual = 2;
+			t++;
+			continue;
+		}
+
+
+		t1 = parse_type(t, last, db);
+		if (t1 == t || t == last)
+			return (first);
+
+		t = t1;
+	}
+
+	if (NAMT(db, n) > 0)
+		njoin(db, NAMT(db, n), ", ");
+	else
+		nadd_l(db, "", 0);
+
+	nfmt(db, "({0})", NULL);
+
+	switch (ref_qual) {
+	case 1:
+		nfmt(db, "{0} &", NULL);
+		break;
+	case 2:
+		nfmt(db, "{0} &&", NULL);
+		break;
+	}
+
+	nfmt(db, "{1:L} ", "{0}{1:R}");
+	return (t);
 }
 
 /*
