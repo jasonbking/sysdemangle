@@ -46,6 +46,7 @@ boolean_t str_append_str(str_t *, const str_t *);
 boolean_t str_append_c(str_t *, int);
 boolean_t str_insert(str_t *, size_t, const char *, size_t);
 boolean_t str_insert_str(str_t *, size_t, const str_t *);
+void str_erase(str_t *, size_t, size_t);
 
 str_pair_t *str_pair_init(str_pair_t *, sysdem_ops_t *);
 void str_pair_fini(str_pair_t *);

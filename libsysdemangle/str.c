@@ -82,10 +82,19 @@ str_reserve(str_t *s, size_t amt)
 		return (B_TRUE);
 
 	size_t newsize = roundup(newlen, STR_CHUNK_SZ);
-	void *temp = xrealloc(s->str_ops, s->str_s, s->str_size, newsize);
+	void *temp;
 
-	if (temp == NULL)
-		return (B_FALSE);
+	if (IS_REF(s)) {
+		temp = zalloc(s->str_ops, newsize);
+		if (temp == NULL)
+			return (B_FALSE);
+
+		(void) memcpy(temp, s->str_s, s->str_len);
+	} else {
+		temp = xrealloc(s->str_ops, s->str_s, s->str_size, newsize);
+		if (temp == NULL)
+			return (B_FALSE);
+	}
 
 	s->str_s = temp;
 	s->str_size = newsize;
@@ -183,6 +192,14 @@ str_insert_str(str_t *dest, size_t idx, const str_t *src)
 	dest->str_len += src->str_len;
 
 	return (B_TRUE);
+}
+
+void
+str_erase(str_t *s, size_t pos, size_t len)
+{
+	ASSERT3U(pos, <, s->str_len);
+	(void) memmove(s->str_s + pos, s->str_s + pos + len, s->str_len - len);
+	s->str_len -= len;
 }
 
 str_pair_t *

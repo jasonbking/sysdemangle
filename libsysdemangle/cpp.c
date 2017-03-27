@@ -2355,6 +2355,65 @@ parse_source_name(const char *first, const char *last, cpp_db_t *db)
 	return (t + n);
 }
 
+// extension:
+// <vector-type>           ::= Dv <positive dimension number> _
+//                                    <extended element type>
+//                         ::= Dv [<dimension expression>] _ <element type>
+// <extended element type> ::= <element type>
+//                         ::= p # AltiVec vector pixel
+static const char *
+parse_vector_type(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 3)
+		return (first);
+
+	ASSERT3U(first[0], ==, 'D');
+	ASSERT3U(first[1], ==, 'v');
+
+	const char *t = first + 2;
+	const char *t1 = NULL;
+
+	if (is_digit(first[2]) && first[2] != '0') {
+		t1 = parse_number(t, last);
+		if (t1 == last || t1 + 1 == last || t1[0] != '_')
+			return (first);
+
+		nadd_l(db, t, (size_t)(t1 - t));
+
+		/* skip _ */
+		t = t1 + 1;
+
+		if (t[0] != 'p') {
+			t1 = parse_type(t, last, db);
+			if (t1 == t)
+				return (first);
+
+			nfmt(db, "{1:L} vector[{0}]", "{1:R}");
+			return (t1);
+		}
+		nfmt(db, "{1:L} pixel vector[{0}]", "{1:R}");
+		return (t1);
+	}
+
+	if (first[2] != '_') {
+		t1 = parse_expression(first + 2, last, db);
+		if (first == last || t1 == first + 2 || t1[0] != '_')
+			return (first);
+
+		/* skip _ */
+		t = t1 + 1;
+	} else {
+		nadd_l(db, "", 0);
+	}
+
+	t1 = parse_type(t, last, db);
+	if (t == t1)
+		return (first);
+
+	nfmt(db, "{1:L} vector[{0}]", "{1:R}");
+	return (t1);
+}
+
 // <decltype>  ::= Dt <expression> E  # decltype of an id-expression or class member access (C++0x)
 //             ::= DT <expression> E  # decltype of an expression (C++0x)
 
@@ -2375,6 +2434,89 @@ parse_decltype(const char *first, const char *last, cpp_db_t *db)
 
 	/* skip E */
 	return (t + 1);
+}
+
+// <array-type> ::= A <positive dimension number> _ <element type>
+//              ::= A [<dimension expression>] _ <element type>
+static const char *
+parse_array_type(const char *first, const char *last, cpp_db_t *db)
+{
+	ASSERT3U(first[0], ==, 'A');
+
+	if (last - first < 3)
+		return (first);
+
+	const char *t = first + 1;
+	const char *t1 = NULL;
+
+	if (t[0] != '_') {
+		if (is_digit(t[0]) && t[0] != '0') {
+			t1 = parse_number(t, last);
+			if (t1 == last)
+				return (first);
+
+			nadd_l(db, t, (size_t)(t1 - t));
+		} else {
+			t1 = parse_expression(t, last, db);
+			if (t1 == last || t == t1)
+				return (first);
+		}
+
+		if (t1[0] != '_')
+			return (first);
+
+		t = t1;
+	} else {
+		nadd_l(db, "", 0);
+	}
+
+	ASSERT3U(t[0], ==, '_');
+
+	t1 = parse_type(t + 1, last, db);
+	if (t1 == t + 1)
+		return (first);
+
+	/*
+	 * if we have  " [xxx]" already, want new result to be
+	 * " [yyy][xxx]"
+	 */
+	str_t *r = &name_top(&db->cpp_name)->strp_r;
+	if (r->str_len > 1 || r->str_s[0] == ' ' || r->str_s[1] == '[')
+		str_erase(r, 0, 1);
+
+	nfmt(db, "{1:L}", " [{0}]{1:R}");
+	return (t1);
+}
+
+// <pointer-to-member-type> ::= M <class type> <member type>
+static const char *
+parse_pointer_to_member_type(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 3)
+		return (first);
+
+	ASSERT3U(first[0], ==, 'M');
+
+	const char *t1 = first + 1;
+	const char *t2 = NULL;
+
+	t2 = parse_type(t1, last, db);
+	if (t1 == t2)
+		return (first);
+
+	t1 = t2;
+	t2 = parse_type(t1, last, db);
+	if (t1 == t2)
+		return (first);
+
+	str_pair_t *func = name_top(&db->cpp_name);
+
+	if (str_length(&func->strp_r) > 0 && func->strp_r.str_s[0] == '(')
+		nfmt(db, "{0:L}({1}::*", "){0:R}");
+	else
+		nfmt(db, "{0:L} {1}::*", "{0:R}");
+
+	return (t2);
 }
 
 /*

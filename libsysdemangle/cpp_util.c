@@ -38,7 +38,7 @@ void
 name_init(name_t *n, sysdem_ops_t *ops)
 {
 	(void) memset(n, 0, sizeof (*n));
-	n->nm_ops = ops;
+	n->nm_ops = (ops != NULL) ? ops : sysdem_ops_default;
 }
 
 void
@@ -334,7 +334,7 @@ void
 sub_init(sub_t *sub, sysdem_ops_t *ops)
 {
 	(void) memset(sub, 0, sizeof (*sub));
-	sub->sub_ops = ops;
+	sub->sub_ops = (ops != NULL) ? ops : sysdem_ops_default;
 }
 
 void
