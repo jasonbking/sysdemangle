@@ -105,6 +105,8 @@ static const char *parse_call_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_arrow_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_conv_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_function_param(const char *, const char *, cpp_db_t *);
+static const char *parse_base_unresolved_name(const char *, const char *,
+    cpp_db_t *);
 static const char *parse_unresolved_name(const char *, const char *,
     cpp_db_t *);
 static const char *parse_noexcept_expr(const char *, const char *, cpp_db_t *);
@@ -117,6 +119,10 @@ static const char *parse_source_name(const char *, const char *, cpp_db_t *);
 static const char *parse_operator_name(const char *, const char *, cpp_db_t *);
 static const char *parse_pack_expansion(const char *, const char *, cpp_db_t *);
 static const char *parse_unresolved_type(const char *, const char *, cpp_db_t *);
+static const char *parse_unresolved_qualifier_level(const char *, const char *,
+   cpp_db_t *);
+static const char *parse_destructor_name(const char *, const char *,
+    cpp_db_t *);
 
 char *
 cpp_demangle(const char *src, sysdem_ops_t *ops)
@@ -1390,6 +1396,40 @@ parse_sizeof(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
+// <function-param> ::= fp <top-level CV-qualifiers> _                                     # L == 0, first parameter
+//                  ::= fp <top-level CV-qualifiers> <parameter-2 non-negative number> _   # L == 0, second and later parameters
+//                  ::= fL <L-1 non-negative number> p <top-level CV-qualifiers> _         # L > 0, first parameter
+//                  ::= fL <L-1 non-negative number> p <top-level CV-qualifiers> <parameter-2 non-negative number> _   # L > 0, second and later parameters
+static const char *
+parse_function_param(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 3 || first[0] != 'f')
+		return (first);
+
+	const char *t1 = first + 2;
+	const char *t2 = NULL;
+	unsigned cv = 0;
+
+	if (first[1] == 'L') {
+		t2 = parse_number(t1, last);
+		if (t2 == last || t2[0] != 'p')
+			return (first);
+		t1 = t2;
+	}
+
+	if (t1[0] != 'p')
+		return (first);
+
+	t1 = parse_cv_qualifiers(t1, last, &cv);
+	t2 = parse_number(t1, last);
+	if (t2 == last || t2[0] != '_')
+		return (first);
+
+	nadd_l(db, t1, (size_t)(t2 - t1));
+	nfmt(db, "fp{0}", NULL);
+	return (t2);
+}
+
 // sZ <template-param>		# size of a parameter pack
 // sZ <function-param>		# size of a function parameter pack
 static const char *
@@ -1603,6 +1643,56 @@ parse_simple_id(const char *first, const char *last, cpp_db_t *db)
 
 	nfmt(db, "{1}{0}", NULL);
 	return (t1);
+}
+
+// <unresolved-type> ::= <template-param>
+//                   ::= <decltype>
+//                   ::= <substitution>
+static const char *
+parse_unresolved_type(const char *first, const char *last, cpp_db_t *db)
+{
+	if (first == last)
+		return (first);
+
+	const char *t = first;
+	size_t n = nlen(db);
+
+	switch (first[0]) {
+	case 'T':
+		t = parse_template_param(first, last, db);
+		if (t == first || NAMT(db, n) != 1) {
+			for (size_t i = 0; i < NAMT(db, n); i++)
+				(void) name_pop(&db->cpp_name, NULL);
+			return (first);
+		}
+		save_top(db);
+		return (t);
+
+	case 'D':
+		t = parse_decltype(first, last, db);
+		if (t == first || NAMT(db, n) == 0)
+			return (first);
+		save_top(db);
+		return (t);
+
+	case 'S':
+		t = parse_substitution(first, last, db);
+		if (t != first)
+			return (t);
+
+		if (last - first < 2 || first[1] != 't')
+			return (first);
+
+		t = parse_unqualified_name(first + 2, last, db);
+		if (t == first + 2 || NAMT(db, n) == 0)
+			return (first);
+
+		nfmt(db, "std::{0:L}", "{0:R}");
+		save_top(db);
+		return (t);
+	}
+
+	return (first);
 }
 
 // <destructor-name> ::= <unresolved-type>                               # e.g., ~T or ~decltype(f())
@@ -2536,6 +2626,205 @@ parse_pointer_to_member_type(const char *first, const char *last, cpp_db_t *db)
 		nfmt(db, "{0:L} {1}::*", "{0:R}");
 
 	return (t2);
+}
+
+// <unresolved-name>
+//  extension        ::= srN <unresolved-type> [<template-args>] <unresolved-qualifier-level>* E <base-unresolved-name>
+//                   ::= [gs] <base-unresolved-name>                     # x or (with "gs") ::x
+//                   ::= [gs] sr <unresolved-qualifier-level>+ E <base-unresolved-name>
+//                                                                       # A::x, N::y, A<T>::z; "gs" means leading "::"
+//                   ::= sr <unresolved-type> <base-unresolved-name>     # T::x / decltype(p)::x
+//  extension        ::= sr <unresolved-type> <template-args> <base-unresolved-name>
+//                                                                       # T::N::x /decltype(p)::N::x
+//  (ignored)        ::= srN <unresolved-type>  <unresolved-qualifier-level>+ E <base-unresolved-name>
+
+static const char *
+parse_unresolved_name(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 2)
+		return (first);
+
+	const char *t = first;
+	const char *t2 = NULL;
+	boolean_t global = B_FALSE;
+	size_t n;
+
+	if (t[0] == 'g' && t[1] == 's') {
+		global = B_TRUE;
+		t += 2;
+	}
+	if (t == last)
+		return (first);
+
+	t2 = parse_base_unresolved_name(t, last, db);
+	if (t != t2) {
+		if (nempty(db))
+			return (first);
+
+		nfmt(db, "::{0:L}", "{0:R}");
+		return (t2);
+	}
+
+	if (t[0] != 's' || t[1] != 'r' || last - t < 2)
+		return (first);
+
+	if (t[2] == 'N') {
+		t += 3;
+		t2 = parse_unresolved_type(t, last, db);
+		if (t2 == t || t2 == last)
+			return (first);
+		t = t2;
+
+		t2 = parse_template_args(t, last, db);
+		if (t2 != t) {
+			if (nlen(db) < 2 || t2 == last)
+				return (first);
+
+			nfmt(db, "{1:L}{0}", "{1:R}");
+			t = t2;
+		}
+
+		n = nlen(db);
+		while (t[0] != 'E') {
+			t2 = parse_unresolved_qualifier_level(t, last, db);
+			if (t == t2 || t == last || nlen(db) < 2)
+				return (first);
+
+			t = t2;
+		}
+
+		/* skip E */
+		t++;
+
+		t2 = parse_base_unresolved_name(t, last, db);
+		if (t == t2 || nlen(db) < 2)
+			return (first);
+
+		njoin(db, NAMT(db, n), "::");
+		return (t2);
+	}
+
+	t += 2;
+
+	t2 = parse_unresolved_type(t, last, db);
+	if (t != t2) {
+		t = t2;
+		t2 = parse_template_args(t, last, db);
+		if (t2 != t)
+			nfmt(db, "{1:L}{0}", "{1:R}");
+		t = t2;
+
+		t2 = parse_base_unresolved_name(t, last, db);
+		if (t == t2 || nlen(db) < 2)
+			return (first);
+
+		nfmt(db, "{1:L}::{0}", "{1:R}");
+		return (t2);
+	}
+
+	t2 = parse_unresolved_qualifier_level(t, last, db);
+	if (t2 == t || t2 == last)
+		return (first);
+
+	t = t2;
+	if (global && nlen(db) > 0)
+		nfmt(db, "::{0:L}", "{0:R}");
+
+	n = nlen(db);
+	while (t[0] != 'E') {
+		t2 = parse_unresolved_qualifier_level(t, last, db);
+		if (t == t2 || t == last || nlen(db) < 2)
+			return (first);
+
+		t = t2;
+	}
+
+	/* skip E */
+	t++;
+
+	t2 = parse_base_unresolved_name(t, last, db);
+	if (t == t2 || nlen(db) < 2)
+		return (first);
+
+	njoin(db, NAMT(db, n), "::");
+	return (t2);
+}
+
+// <unresolved-qualifier-level> ::= <simple-id>
+static const char *
+parse_unresolved_qualifier_level(const char *first, const char *last, cpp_db_t *db)
+{
+	return (parse_simple_id(first, last, db));
+}
+
+// <base-unresolved-name> ::= <simple-id>                                # unresolved name
+//          extension     ::= <operator-name>                            # unresolved operator-function-id
+//          extension     ::= <operator-name> <template-args>            # unresolved operator template-id
+//                        ::= on <operator-name>                         # unresolved operator-function-id
+//                        ::= on <operator-name> <template-args>         # unresolved operator template-id
+//                        ::= dn <destructor-name>                       # destructor or pseudo-destructor;
+//                                                                         # e.g. ~X or ~X<N-1>
+static const char *
+parse_base_unresolved_name(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 2)
+		return (first);
+
+	const char *t = NULL;
+	const char *t1 = NULL;
+
+	if ((first[0] != 'o' && first[0] != 'd') || first[1] != 'n') {
+		t = parse_simple_id(first, last, db);
+		if (t != first)
+			return (t);
+
+		t = parse_operator_name(first, last, db);
+		if (t == first)
+			return (first);
+
+		t1 = parse_template_args(t, last, db);
+		if (t1 != t) {
+			if (nlen(db) < 2)
+				return (first);
+			nfmt(db, "{1:L}{0}", "{1:R}");
+		}
+
+		return (t1);
+	}
+
+	if (first[0] == 'd') {
+		t = parse_destructor_name(first + 2, last, db);
+		return ((t != first + 2) ? t : first);
+	}
+
+	t = parse_operator_name(first + 2, last, db);
+	if (t == first + 2)
+		return (first);
+
+	t1 = parse_template_args(t, last, db);
+	if (t1 != t)
+		nfmt(db, "{1:L}{0}", "{1:R}");
+	return (t1);
+}
+
+// <destructor-name> ::= <unresolved-type>                               # e.g., ~T or ~decltype(f())
+//                   ::= <simple-id>                                     # e.g., ~A<2*N>
+static const char *
+parse_destructor_name(const char *first, const char *last, cpp_db_t *db)
+{
+	if (first == last)
+		return (first);
+
+	const char *t = parse_unresolved_type(first, last, db);
+
+	if (t == first)
+		t = parse_simple_id(first, last, db);
+
+	if (t == first)
+		return (first);
+
+	nfmt(db, "~{0:L}", "{0:R}");
+	return (t);
 }
 
 //  <ref-qualifier> ::= R                   # & ref-qualifier
