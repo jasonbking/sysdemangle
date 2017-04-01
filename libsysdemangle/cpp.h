@@ -64,5 +64,12 @@ typedef struct templ_s {
 void templ_init(templ_t *, sysdem_ops_t *);
 void templ_fini(templ_t *);
 boolean_t templ_empty(const templ_t *);
+boolean_t templ_top_empty(const templ_t *);
+boolean_t templ_sub(const templ_t *, size_t, name_t *);
+boolean_t templ_save(const name_t *, size_t, templ_t *);
+
+boolean_t templ_push(templ_t *);
+void templ_pop(templ_t *);
+sub_t *templ_top(templ_t *);
 
 #endif /* _CPP_H */

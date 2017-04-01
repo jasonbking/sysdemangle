@@ -399,7 +399,7 @@ sub_save(sub_t *sub, const name_t *n, size_t depth)
 	if (!name_reserve(dest, depth))
 		return (B_FALSE);
 
-	str_pair_t *src_sp = name_at((name_t *)n, depth);
+	const str_pair_t *src_sp = name_at((name_t *)n, depth);
 
 	for (size_t i = 0; i < depth; i++, src_sp++) {
 		str_pair_t copy;
@@ -431,9 +431,98 @@ sub_substitute(const sub_t *sub, size_t idx, name_t *n)
 	return (B_TRUE);
 }
 
+static boolean_t
+templ_reserve(templ_t *tpl, size_t n)
+{
+	if (tpl->tpl_len + n < tpl->tpl_size)
+		return (B_TRUE);
+
+	size_t newsize = tpl->tpl_size + CHUNK_SIZE;
+	void *temp = xrealloc(tpl->tpl_ops, tpl->tpl_items,
+	    tpl->tpl_size * sizeof (sub_t), newsize * sizeof (sub_t));
+
+	if (temp == NULL)
+		return (B_FALSE);
+
+	for (size_t i = tpl->tpl_size; i < newsize; i++)
+		sub_init(&tpl->tpl_items[i], tpl->tpl_ops);
+
+	tpl->tpl_items = temp;
+	tpl->tpl_size = newsize;
+	return (B_TRUE);
+}
+
+void
+templ_init(templ_t *tpl, sysdem_ops_t *ops)
+{
+	(void) memset(tpl, 0, sizeof (*tpl));
+	tpl->tpl_ops = ops;
+}
+
+void
+templ_fini(templ_t *tpl)
+{
+	if (tpl == NULL)
+		return;
+
+	for (size_t i = 0; i < tpl->tpl_len; i++)
+		sub_fini(&tpl->tpl_items[i]);
+
+	xfree(tpl->tpl_ops, tpl->tpl_items, tpl->tpl_size * sizeof (sub_t));
+	sysdem_ops_t *ops = tpl->tpl_ops;
+	(void) memset(tpl, 0, sizeof (*tpl));
+	tpl->tpl_ops = ops;
+}
+
+boolean_t
+templ_push(templ_t *tpl)
+{
+	if (!templ_reserve(tpl, 1))
+		return (B_FALSE);
+
+	tpl->tpl_len++;
+	return (B_TRUE);
+}
+
+void
+templ_pop(templ_t *tpl)
+{
+	ASSERT(!templ_empty(tpl));
+	sub_fini(templ_top(tpl));
+	tpl->tpl_len--;
+}
+
+sub_t *
+templ_top(templ_t *tpl)
+{
+	return (&tpl->tpl_items[tpl->tpl_len - 1]);
+}
+
 boolean_t
 templ_empty(const templ_t *tpl)
 {
 	return ((tpl->tpl_len == 0) ? B_TRUE : B_FALSE);
+}
+
+boolean_t
+templ_top_empty(const templ_t *tpl)
+{
+	const sub_t *sub = templ_top((templ_t *)tpl);
+	return (sub_empty(sub));
+}
+
+boolean_t
+templ_sub(const templ_t *tpl, size_t idx, name_t *n)
+{
+	const sub_t *sub = &tpl->tpl_items[tpl->tpl_len - 1];
+
+	return (sub_substitute(sub, idx, n));
+}
+
+boolean_t
+templ_save(const name_t *n, size_t amt, templ_t *tpl)
+{
+	sub_t *s = templ_top(tpl);
+	return (sub_save(s, n, amt));
 }
 

@@ -54,10 +54,19 @@ static void nfmt(cpp_db_t *, const char *, const char *);
 static void save_top(cpp_db_t *);
 static void sub(cpp_db_t *, size_t);
 
+static boolean_t tempty(const cpp_db_t *);
+static boolean_t ttempty(const cpp_db_t *);
+static void tsub(cpp_db_t *, size_t);
+static void tpush(cpp_db_t *);
+static void tpop(cpp_db_t *);
+static void tsave(cpp_db_t *, size_t);
+
+
 static void db_init(cpp_db_t *, sysdem_ops_t *);
 static void db_fini(cpp_db_t *);
 
 static void demangle(const char *, const char *, cpp_db_t *);
+
 static const char *parse_type(const char *, const char *, cpp_db_t *);
 static const char *parse_encoding(const char *, const char *, cpp_db_t *);
 static const char *parse_dot_suffix(const char *, const char *, cpp_db_t *);
@@ -2898,6 +2907,96 @@ parse_function_type(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
+// <template-param> ::= T_    # first template parameter
+//                  ::= T <parameter-2 non-negative number> _
+
+static const char *
+parse_template_param(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 2 || first[0] != 'T')
+		return (first);
+
+	const char *t = first + 1;
+	size_t idx = 0;
+
+	while (t != last && t[0] != '_') {
+		if (!is_digit(t[0]))
+			return (first);
+
+		idx *= 10;
+		idx += t[0] - '0';
+		t++;
+	}
+
+	if (t == last)
+		return (first);
+
+	ASSERT3U(t[0], ==, '_');
+
+	/*
+	 * T_ -> idx 0
+	 * T0 -> idx 1
+	 * T1 -> idx 2
+	 * ...
+	 */
+	if (first[1] != '_')
+		idx++;
+
+	if (tempty(db))
+		return (first);
+
+	if (ttempty(db)) {
+		nadd_l(db, first, (size_t)(t - first));
+		db->cpp_fix_forward_references = B_TRUE;
+		return (t);
+	}
+
+	tsub(db, idx);
+	return (t);
+}
+
+// <template-args> ::= I <template-arg>* E
+//     extension, the abi says <template-arg>+
+static const char *
+parse_template_args(const char *first, const char *last, cpp_db_t *db)
+{
+	if (last - first < 2 || first[0] != 'I')
+		return (first);
+
+	if (db->cpp_tag_templates)
+		sub_clear(templ_top(&db->cpp_templ));
+
+	const char *t = first + 1;
+
+	while (t[0] != 'E') {
+		if (db->cpp_tag_templates)
+			tpush(db);
+
+		size_t n = nlen(db);
+		const char *t1 = parse_template_arg(t, last, db);
+
+		if (db->cpp_tag_templates)
+			tpop(db);
+
+		if (t1 == t || t == last)
+			return (first);
+
+		if (db->cpp_tag_templates)
+			tsave(db, NAMT(db, n));
+
+		njoin(db, NAMT(db, n), ", ");
+		t = t1;
+	}
+
+	/* make sure we don't bitshift ourselves into oblivion */
+	if (TOP_L(db)->str_s[TOP_L(db)->str_len - 1] == '>')
+		nfmt(db, "<{0} >", NULL);
+	else
+		nfmt(db, "<{0}>", NULL);
+
+	return (t);
+}
+
 /*
  * <discriminator> := _ <non-negative number>      # when number < 10
  *                 := __ <non-negative number> _   # when number >= 10
@@ -3039,6 +3138,42 @@ static void
 sub(cpp_db_t *db, size_t n)
 {
 	CK(sub_substitute(&db->cpp_subs, n, &db->cpp_name));
+}
+
+static boolean_t
+tempty(const cpp_db_t *db)
+{
+	return (templ_empty(&db->cpp_templ) ? B_TRUE : B_FALSE);
+}
+
+static boolean_t
+ttempty(const cpp_db_t *db)
+{
+	return (templ_top_empty(&db->cpp_templ));
+}
+
+static void
+tsub(cpp_db_t *db, size_t n)
+{
+	CK(templ_sub(&db->cpp_templ, n, &db->cpp_name));
+}
+
+static void
+tpush(cpp_db_t *db)
+{
+	CK(templ_push(&db->cpp_templ));
+}
+
+static void
+tpop(cpp_db_t *db)
+{
+	templ_pop(&db->cpp_templ);
+}
+
+static void
+tsave(cpp_db_t *db, size_t amt)
+{
+	CK(templ_save(&db->cpp_name, amt, &db->cpp_templ));
 }
 
 static void
