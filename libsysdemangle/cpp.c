@@ -390,9 +390,8 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 		if (str_length(&sp->strp_r) == 0)
 			str_append(&sp->strp_l, " ", 1);
 
+		nfmt(db, "{0:L}{1:L}", "{1:R}{0:R}");
 		t = t2;
-	} else {
-		CK(name_add(&db->cpp_name, "", 0, "", 0));
 	}
 
 	if (t == last || nempty(db))
@@ -400,6 +399,7 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 
 	if (t[0] == 'v') {
 		t++;
+		nadd_l(db, "", 0);
 	} else {
 		size_t n = nlen(db);
 
@@ -1480,7 +1480,9 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 
 	const char *t = first;
 	const char *t1 = NULL;
+	str_pair_t *sp = NULL;
 	size_t n = nlen(db);
+	size_t amt = 0;
 
 	t = parse_builtin_type(first, last, db);
 	if (t != first)
@@ -1531,13 +1533,13 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 		if (t == first + 1 || NAMT(db, n) == 0)
 			return (first);
 
-		for (size_t i = n; i < nlen(db); i++) {
-			str_pair_t *sp = name_at(&db->cpp_name, i);
-
+		amt = NAMT(db, n);
+		sp = name_at(&db->cpp_name, amt - 1);
+		for (size_t i = 0; i < amt; i++, sp++) {
 			paren(sp);
 			str_append(&sp->strp_l, "&&", 2);
 		}
-		save_top(db, NAMT(db, n));
+		save_top(db, amt);
 		return (t);
 
 	case 'P':
@@ -1545,8 +1547,9 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 		if (t == first + 1)
 			return (first);
 
-		for (size_t i = n; i < nlen(db); i++) {
-			str_pair_t *sp = name_at(&db->cpp_name, i);
+		amt = NAMT(db, n);
+		sp = name_at(&db->cpp_name, amt - 1);
+		for (size_t i = 0; i < amt; i++, sp++) {
 			str_t *l = &sp->strp_l;
 
 			paren(sp);
@@ -1558,7 +1561,7 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 				str_insert(l, 0, "id", 2);
 			}
 		}
-		save_top(db, NAMT(db, n));
+		save_top(db, amt);
 		return (t);
 
 	case 'R':
@@ -1566,14 +1569,14 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 		if (t == first + 1)
 			return (first);
 
-		for (size_t i = n; i < nlen(db); i++) {
-			str_pair_t *sp = name_at(&db->cpp_name, i);
-
+		amt = NAMT(db, n);
+		sp = name_at(&db->cpp_name, amt - 1);
+		for (size_t i = 0; i < amt; i++, sp++) {
 			paren(sp);
 			str_append(&sp->strp_l, "&", 1);
 		}
 
-		save_top(db, NAMT(db, n));
+		save_top(db, amt);
 		return (t);
 
 	case 'T':

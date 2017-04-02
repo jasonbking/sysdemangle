@@ -12,8 +12,8 @@ static struct {
     const char *mangled;
     const char *demangled;
 } test = {
-    "_ZGVNSt7num_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE2idE",
-    "guard variable for std::num_get<char, std::istreambuf_iterator<char, std::char_traits<char> > >::id"
+    "_ZGVZN12_GLOBAL__N_119get_safe_base_mutexEPvE15safe_base_mutex",
+    "guard variable for (anonymous namespace)::get_safe_base_mutex(void*)::safe_base_mutex"
 };
 
 
