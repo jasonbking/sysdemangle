@@ -70,6 +70,27 @@ str_set(str_t *s, const char *cstr, size_t len)
 	s->str_len = (len == 0 && cstr != NULL) ? strlen(cstr) : len;
 }
 
+boolean_t
+str_copy(const str_t *src, str_t *dest)
+{
+	str_fini(dest);
+	str_init(dest, src->str_ops);
+
+	if (src->str_len == 0)
+		return (B_TRUE);
+
+	size_t len = roundup(src->str_len, STR_CHUNK_SZ);
+	dest->str_s = zalloc(src->str_ops, len);
+	if (dest->str_s == NULL)
+		return (B_FALSE);
+
+	(void) memcpy(dest->str_s, src->str_s, src->str_len);
+	dest->str_len = src->str_len;
+	dest->str_size = len;
+
+	return (B_TRUE);
+}
+
 /*
  * ensure s has at least amt bytes free, resizing if necessary
  */
@@ -161,7 +182,8 @@ str_insert(str_t *s, size_t idx, const char *cstr, size_t cstrlen)
 	str_t src = {
 		.str_s = (char *)cstr,
 		.str_len = cstrlen,
-		.str_ops = s->str_ops
+		.str_ops = s->str_ops,
+		.str_size = 0
 	};
 
 	return (str_insert_str(s, idx, &src));
@@ -187,7 +209,7 @@ str_insert_str(str_t *dest, size_t idx, const str_t *src)
 
 	/* Unlike some programmers, *I* can read manpages. */
 	(void) memmove(dest->str_s + idx + src->str_len, dest->str_s + idx,
-	    src->str_len);
+	    dest->str_len - idx);
 	(void) memcpy(dest->str_s + idx, src->str_s, src->str_len);
 	dest->str_len += src->str_len;
 
@@ -251,9 +273,17 @@ str_pair_merge(str_pair_t *sp)
 boolean_t
 str_pair_copy(const str_pair_t *src, str_pair_t *dest)
 {
-	dest->strp_l.str_len = dest->strp_r.str_len = 0;
-	
-	return (str_append_str(&dest->strp_l, &src->strp_l) &&
-	    str_append_str(&dest->strp_r, &src->strp_r));
+	boolean_t ok = B_TRUE;
+
+	ok &= str_copy(&src->strp_l, &dest->strp_l);
+	ok &= str_copy(&src->strp_r, &dest->strp_r);
+
+	if (!ok) {
+		str_fini(&dest->strp_l);
+		str_fini(&dest->strp_r);
+		return (B_FALSE);
+	}
+
+	return (B_TRUE);
 }
 

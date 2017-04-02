@@ -382,9 +382,6 @@ sub_reserve(sub_t *sub, size_t amt)
 	sub->sub_items = temp;
 	sub->sub_size = newsize;
 
-	for (size_t i = sub->sub_len; i < newsize; i++)
-		name_init(&sub->sub_items[i], sub->sub_ops);
-
 	return (B_TRUE);
 }
 
@@ -397,14 +394,19 @@ sub_save(sub_t *sub, const name_t *n, size_t depth)
 	if (!sub_reserve(sub, 1))
 		return (B_FALSE);
 
-	name_t *dest = &sub->sub_items[sub->sub_len];
-	if (!name_reserve(dest, depth))
+	name_t *dest = &sub->sub_items[sub->sub_len++];
+	name_init(dest, sub->sub_ops);
+
+	if (!name_reserve(dest, depth)) {
+		name_fini(dest);
+		sub->sub_len--;
 		return (B_FALSE);
+	}
 
 	const str_pair_t *src_sp = name_at((name_t *)n, depth - 1);
 
 	for (size_t i = 0; i < depth; i++, src_sp++) {
-		str_pair_t copy;
+		str_pair_t copy = { 0 };
 		str_pair_init(&copy, n->nm_ops);
 		if (!str_pair_copy(src_sp, &copy)) {
 			str_pair_fini(&copy);
@@ -422,15 +424,26 @@ sub_save(sub_t *sub, const name_t *n, size_t depth)
 boolean_t
 sub_substitute(const sub_t *sub, size_t idx, name_t *n)
 {
-	name_t *src = &sub->sub_items[idx];
+	const name_t *src = &sub->sub_items[idx];
+	const str_pair_t *sp = src->nm_items;
+	size_t save = name_len(n);
 
-	for (size_t i = 0; i < src->nm_len; i++) {
-		if (!name_add_str(n, &src->nm_items[i].strp_l,
-		    &src->nm_items[i].strp_r))
-			return (B_FALSE);
+	for (size_t i = 0; i < src->nm_len; i++, sp++) {
+		str_pair_t copy = { 0 };
+
+		if (!str_pair_copy(sp, &copy))
+			goto fail;
+
+		if (!name_add_str(n, &copy.strp_l, &copy.strp_r))
+			goto fail;
 	}
 	
 	return (B_TRUE);
+
+fail:
+	for (size_t i = 0; i < name_len(n) - save; i++)
+		(void) name_pop(n, NULL);
+	return (B_FALSE);
 }
 
 void
@@ -452,9 +465,6 @@ templ_reserve(templ_t *tpl, size_t n)
 
 	if (temp == NULL)
 		return (B_FALSE);
-
-	for (size_t i = tpl->tpl_size; i < newsize; i++)
-		sub_init(&tpl->tpl_items[i], tpl->tpl_ops);
 
 	tpl->tpl_items = temp;
 	tpl->tpl_size = newsize;
@@ -489,7 +499,8 @@ templ_push(templ_t *tpl)
 	if (!templ_reserve(tpl, 1))
 		return (B_FALSE);
 
-	tpl->tpl_len++;
+	sub_t *sub = &tpl->tpl_items[tpl->tpl_len++];
+	sub_init(sub, tpl->tpl_ops);
 	return (B_TRUE);
 }
 
@@ -497,8 +508,9 @@ void
 templ_pop(templ_t *tpl)
 {
 	ASSERT(!templ_empty(tpl));
-	sub_fini(templ_top(tpl));
-	tpl->tpl_len--;
+
+	sub_t *sub = &tpl->tpl_items[--tpl->tpl_len];
+	sub_fini(sub);
 }
 
 sub_t *

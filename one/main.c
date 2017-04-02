@@ -12,17 +12,22 @@ static struct {
     const char *mangled;
     const char *demangled;
 } test = {
-    "_ZGVZN12_GLOBAL__N_119get_safe_base_mutexEPvE15safe_base_mutex",
-    "guard variable for (anonymous namespace)::get_safe_base_mutex(void*)::safe_base_mutex"
+    "_ZN12_GLOBAL__N_1L11static_condE",
+    "(anonymous namespace)::static_cond"
 };
 
 
 
 int main(int argc, const char * argv[]) {
-    char *res = sysdemangle(test.mangled, NULL, NULL);
+    printf("%s\n\n", test.mangled);
+    printf("exp: %s\n", test.demangled);
+
+    char *out = NULL;
+    char *res = sysdemangle(test.mangled, NULL, &out);
 
     if (res != NULL)
-        printf("%s\n%s\n", test.demangled, res);
+        printf("res: %s\n", res);
 
+    printf("\n%s\n", out);
     return 0;
 }

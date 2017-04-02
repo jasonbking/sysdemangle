@@ -40,6 +40,7 @@ typedef struct str_pair_s {
 void str_init(str_t *restrict, sysdem_ops_t *);
 void str_fini(str_t *);
 size_t str_length(const str_t *);
+boolean_t str_copy(const str_t *, str_t *);
 void str_set(str_t *, const char *, size_t);
 boolean_t str_append(str_t *, const char *, size_t);
 boolean_t str_append_str(str_t *, const str_t *);

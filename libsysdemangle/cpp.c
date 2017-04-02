@@ -163,29 +163,68 @@ print_sp(str_t *out, const str_pair_t *sp)
 }
 
 static void
+print_name(str_t *out, const name_t *n)
+{
+	size_t i;
+
+	if (name_len(n) == 0)
+		return;
+
+	str_append(out, "Name:\n", 0);
+
+	for (i = n->nm_len - 1; i > 0; i--) {
+		char buf[10] = { 0 };
+
+		snprintf(buf, sizeof (buf), "  [%02zu] ",
+			 name_len(n) - i - 1);
+		str_append(out, buf, 0);
+
+		print_sp(out, &n->nm_items[i]);
+		str_append_c(out, '\n');
+	}
+	str_append_c(out, '\n');
+
+}
+
+static void
+print_sub(str_t *out, const sub_t *sub)
+{
+	const name_t *n = sub->sub_items;
+	char buf[64] = { 0 };
+
+	if (sub->sub_len == 0)
+		return;
+
+	snprintf(buf, sizeof (buf), "Subs (%zu):\n", sub->sub_len);
+	str_append(out, buf, 0);
+	for (size_t i = 0; i < sub->sub_len; i++, n++) {
+		if (i == 0) {
+			str_append(out, "  S_ = ", 0);
+		} else {
+			snprintf(buf, sizeof (buf), "  S%zu_ = ", i - 1);
+			str_append(out, buf, 0);
+		}
+
+		for (size_t j = 0; j < n->nm_len; j++) {
+			if (j > 0)
+				str_append_c(out, ' ');
+			print_sp(out, &n->nm_items[j]);
+		}
+
+		str_append_c(out, '\n');
+	}
+	str_append_c(out, '\n');
+}
+
+static void
 dump(cpp_db_t *db, char **dbg)
 {
 	str_t s;
-	size_t i;
-
-	if (name_len(&db->cpp_name) == 0)
-		return;
 
 	str_init(&s, db->cpp_ops);
 
-	str_append(&s, "Name:\n", 0);
-
-	for (i = db->cpp_name.nm_len - 1; i > 0; i--) {
-		char buf[6] = { 0 };
-
-		snprintf(buf, sizeof (buf), "[%02zu] ",
-			 name_len(&db->cpp_name) - i - 1);
-		str_append(&s, buf, 0);
-
-		print_sp(&s, &db->cpp_name.nm_items[i]);
-		str_append_c(&s, '\n');
-	}
-	str_append_c(&s, '\n');
+	print_name(&s, &db->cpp_name);
+	print_sub(&s, &db->cpp_subs);
 
 	*dbg = zalloc(db->cpp_ops, s.str_len + 1);
 	(void) memcpy(*dbg, s.str_s, s.str_len);
@@ -851,7 +890,8 @@ parse_nested_name(const char *first, const char *last,
 		case 'L':
 			if (t + 1 == last)
 				return (first);
-			goto done;
+			t++;
+			continue;
 
 		default:
 			break;
@@ -876,8 +916,8 @@ parse_nested_name(const char *first, const char *last,
 
 done:
 	db->cpp_cv = cv;
-	if (pop_subs && sub_empty(&db->cpp_subs))
-		;//pop sub
+	if (pop_subs && !sub_empty(&db->cpp_subs))
+		sub_pop(&db->cpp_subs);
 	
 	if (ends_with_template_args != NULL)
 		*ends_with_template_args = component_ends_with_template_args;
@@ -1438,7 +1478,7 @@ paren(str_pair_t *sp)
 		str_append(l, " (", 2);
 		str_insert(r, 0, ")", 1);
 	} else if (str_length(r) > 0 && r->str_s[0] == '('){
-		str_append(l, "(", 0);
+		str_append(l, "(", 1);
 		str_insert(r, 0, ")", 1);
 	}
 }
@@ -1727,7 +1767,7 @@ parse_qual_type(const char *first, const char *last, cpp_db_t *db)
 	if (is_func)
 		sub_pop(&db->cpp_subs);
 
-	str_pair_t *sp = name_at(&db->cpp_name, amt);
+	str_pair_t *sp = name_at(&db->cpp_name, amt - 1);
 
 	for (size_t i = 0; i < amt; i++, sp++) {
 		str_t *s = NULL;
@@ -1735,7 +1775,7 @@ parse_qual_type(const char *first, const char *last, cpp_db_t *db)
 		if (!is_func) {
 			s = &sp->strp_l;
 			if (cv & 1)
-				str_append(s, "  const", 6);
+				str_append(s, " const", 6);
 			if (cv & 2)
 				str_append(s, " volatile", 9);
 			if (cv & 4)
@@ -2947,7 +2987,7 @@ parse_substitution(const char *first, const char *last, cpp_db_t *db)
 
 	if (first[1] == '_') {
 		sub(db, 0);
-		return (first +2);
+		return (first + 2);
 	}
 
 	size_t n = 0;
@@ -3377,9 +3417,12 @@ parse_function_type(const char *first, const char *last, cpp_db_t *db)
 
 	size_t n = nlen(db);
 	int ref_qual = 0;
+	
+	t = t1;
 
 	while (t != last && t[0] != 'E') {
 		if (t[0] == 'v') {
+			nadd_l(db, "", 0);
 			t++;
 			continue;
 		}
@@ -3404,11 +3447,10 @@ parse_function_type(const char *first, const char *last, cpp_db_t *db)
 		t = t1;
 	}
 
-	if (NAMT(db, n) > 0)
-		njoin(db, NAMT(db, n), ", ");
-	else
-		nadd_l(db, "", 0);
+	if (t == last)
+		return (first);
 
+	njoin(db, NAMT(db, n), ", ");
 	nfmt(db, "({0})", NULL);
 
 	switch (ref_qual) {
@@ -3421,7 +3463,9 @@ parse_function_type(const char *first, const char *last, cpp_db_t *db)
 	}
 
 	nfmt(db, "{1:L} ", "{0}{1:R}");
-	return (t);
+
+	/* skip E */
+	return (t + 1);
 }
 
 // <template-param> ::= T_    # first template parameter
