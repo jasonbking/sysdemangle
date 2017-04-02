@@ -7,7 +7,7 @@
 		<key>sysdemangle.xcscheme</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>0</integer>
+			<integer>3</integer>
 		</dict>
 		<key>test.xcscheme</key>
 		<dict>
@@ -33,6 +33,11 @@
 			<true/>
 		</dict>
 		<key>EEAFB7841E860A46009370D7</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>EEBB4B6B1E90A08B0043B237</key>
 		<dict>
 			<key>primary</key>
 			<true/>

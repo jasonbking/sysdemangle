@@ -25,6 +25,8 @@ extern "C" {
 #ifndef __sun
 #include <assert.h>
 
+#define _LITTLE_ENDIAN 1
+
 #define ASSERT(x) assert(x)
 #define	VERIFY3_IMPL(LEFT, OP, RIGHT, TYPE) \
 	do {							\
@@ -47,6 +49,7 @@ typedef enum {
 #else
 #include <sys/debug.h>
 #include <sys/sysmacros.h>
+#include <sys/isa_defs.h>
 #endif /* __sun */
 
 typedef struct sysdem_alloc_s {

@@ -1,4 +1,4 @@
-#include "test.h"
+#include "tests.h"
 
 /*
  * Symbol names were generated using the following:
@@ -8622,10 +8622,8 @@ static test_t tests[] = {
 };
 /*END CSTYLED*/
 
-static test_list info = {
+test_list_t *gcc_libstdc = &(test_list_t){
     .desc = "GCC 4.7 libstdc++ symbols",
-    .tests = &tests,
+    .tests = tests,
     .ntests = sizeof (tests) / sizeof (test_t)
 };
-
-test_list_t *gcc_libstdc = &info;

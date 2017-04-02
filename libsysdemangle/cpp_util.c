@@ -431,6 +431,13 @@ sub_substitute(const sub_t *sub, size_t idx, name_t *n)
 	return (B_TRUE);
 }
 
+void
+sub_pop(sub_t *sub)
+{
+	name_t *top = &sub->sub_items[--sub->sub_len];
+	name_fini(top);
+}
+
 static boolean_t
 templ_reserve(templ_t *tpl, size_t n)
 {

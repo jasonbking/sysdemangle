@@ -50,6 +50,7 @@ typedef struct sub_s {
 void sub_clear(sub_t *);
 void sub_init(sub_t *, sysdem_ops_t *);
 void sub_fini(sub_t *);
+void sub_pop(sub_t *);
 boolean_t sub_save(sub_t *, const name_t *, size_t);
 boolean_t sub_substitute(const sub_t *, size_t, name_t *);
 boolean_t sub_empty(const sub_t *);

@@ -78,7 +78,7 @@ str_reserve(str_t *s, size_t amt)
 {
 	size_t newlen = s->str_len + amt;
 
-	if (s->str_len + amt <= s->str_size)
+	if (s->str_len + amt <= s->str_size && amt > 0)
 		return (B_TRUE);
 
 	size_t newsize = roundup(newlen, STR_CHUNK_SZ);
@@ -194,12 +194,18 @@ str_insert_str(str_t *dest, size_t idx, const str_t *src)
 	return (B_TRUE);
 }
 
-void
+boolean_t
 str_erase(str_t *s, size_t pos, size_t len)
 {
 	ASSERT3U(pos, <, s->str_len);
+	if (IS_REF(s)) {
+		if (!str_reserve(s, 0))
+			return (B_FALSE);
+	}
+
 	(void) memmove(s->str_s + pos, s->str_s + pos + len, s->str_len - len);
 	s->str_len -= len;
+	return (B_TRUE);
 }
 
 str_pair_t *

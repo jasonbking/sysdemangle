@@ -19,11 +19,11 @@
 #include <string.h>
 #include <errno.h>
 
-#include "libsysdemangle.h"
+#include "sysdemangle.h"
 #include "tests.h"
 
-test_list_t *gcc_libstdc;
-test_list_t *llvm;
+extern test_list_t *gcc_libstdc;
+extern test_list_t *llvm_pass_list;
 
 static uint64_t total;
 static uint64_t success;
@@ -37,8 +37,7 @@ run_test_list(test_list_t *tl)
 	(void) printf("# Test: %s\n", tl->desc);
 
 	for (size_t i = 0; i < tl->ntests; i++) {
-		char *result = sysdemangle(tl->tests[i].mangled,
-		    sysdem_alloc_default);
+		char *result = sysdemangle(tl->tests[i].mangled, NULL);
 
 		if (result == NULL ||
 		    strcmp(result, tl->tests[i].demangled) != 0) {
@@ -70,7 +69,7 @@ run_test_list(test_list_t *tl)
 int
 main(int argc, const char * argv[]) {
 	run_test_list(gcc_libstdc);
-	run_test_list(llvm);
+	run_test_list(llvm_pass_list);
 
 	(void) printf("Total: %" PRIu64 "/%" PRIu64 "\n", success, total);
 	return ((success == total) ? 0 : 1);

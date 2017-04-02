@@ -11,6 +11,7 @@
 #include <string.h>
 #include <setjmp.h>
 #include "sysdemangle.h"
+#include "util.h"
 #include "cpp.h"
 
 #define CPP_QUAL_CONST		(1U)
@@ -44,6 +45,7 @@ typedef struct cpp_db_s {
 
 static inline boolean_t is_digit(int);
 static inline boolean_t is_upper(int);
+static inline boolean_t is_xdigit(int);
 
 static boolean_t nempty(cpp_db_t *);
 static size_t nlen(cpp_db_t *);
@@ -51,7 +53,7 @@ static void nadd_l(cpp_db_t *, const char *, size_t);
 static void njoin(cpp_db_t *, size_t, const char *);
 static void nfmt(cpp_db_t *, const char *, const char *);
 
-static void save_top(cpp_db_t *);
+static void save_top(cpp_db_t *, size_t);
 static void sub(cpp_db_t *, size_t);
 
 static boolean_t tempty(const cpp_db_t *);
@@ -68,6 +70,8 @@ static void db_fini(cpp_db_t *);
 static void demangle(const char *, const char *, cpp_db_t *);
 
 static const char *parse_type(const char *, const char *, cpp_db_t *);
+static const char *parse_builtin_type(const char *, const char *, cpp_db_t *);
+static const char *parse_qual_type(const char *, const char *, cpp_db_t *);
 static const char *parse_encoding(const char *, const char *, cpp_db_t *);
 static const char *parse_dot_suffix(const char *, const char *, cpp_db_t *);
 static const char *parse_block_invoke(const char *, const char *, cpp_db_t *);
@@ -132,6 +136,11 @@ static const char *parse_unresolved_qualifier_level(const char *, const char *,
    cpp_db_t *);
 static const char *parse_destructor_name(const char *, const char *,
     cpp_db_t *);
+static const char *parse_function_type(const char *, const char *, cpp_db_t *);
+static const char *parse_array_type(const char *, const char *, cpp_db_t *);
+static const char *parse_pointer_to_member_type(const char *, const char *, cpp_db_t *);
+static const char *parse_vector_type(const char *, const char *, cpp_db_t *);
+
 
 char *
 cpp_demangle(const char *src, sysdem_ops_t *ops)
@@ -585,7 +594,7 @@ parse_name(const char *first, const char *last,
 		if (t == t1 || t1 == last || t1[0] != 'I')
 			return (first);
 	} else {
-		save_top(db);
+		save_top(db, 1);
 	}
 
 	t = parse_template_args(t1, last, db);
@@ -723,7 +732,7 @@ parse_nested_name(const char *first, const char *last,
 				else
 					nfmt(db, "{1:L}::{0}", "{1:R}");
 
-				save_top(db);
+				save_top(db, 1);
 				more = B_TRUE;
 				pop_subs = B_TRUE;
 				t = t1;
@@ -739,7 +748,7 @@ parse_nested_name(const char *first, const char *last,
 				else
 					nfmt(db, "{1:L}::{0}", "{1:R}");
 
-				save_top(db);
+				save_top(db, 1);
 				more = B_TRUE;
 				pop_subs = B_TRUE;
 				t = t1;
@@ -757,7 +766,7 @@ parse_nested_name(const char *first, const char *last,
 				else
 					nfmt(db, "{1:L}::{0}", "{1:R}");
 
-				save_top(db);
+				save_top(db, 1);
 				more = B_TRUE;
 				pop_subs = B_TRUE;
 				t = t1;
@@ -769,7 +778,7 @@ parse_nested_name(const char *first, const char *last,
 					return (first);
 
 				nfmt(db, "{1:L}{0}", "{1:R}");
-				save_top(db);
+				save_top(db, 1);
 				t = t1;
 				component_ends_with_template_args = B_TRUE;
 				continue;
@@ -792,7 +801,7 @@ parse_nested_name(const char *first, const char *last,
 		else
 			nfmt(db, "{1:L}::{0}", "{1:R}");
 
-		save_top(db);
+		save_top(db, 1);
 		more = B_TRUE;
 		pop_subs = B_TRUE;
 		t = t1;
@@ -1352,6 +1361,345 @@ parse_arrow_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t2);
 }
 
+/* wrap value in () when necessary */
+static void
+paren(str_pair_t *sp)
+{
+	str_t *l = &sp->strp_l;
+	str_t *r = &sp->strp_r;
+
+	if (str_length(r) > 1 &&
+	    r->str_s[0] == ' ' && r->str_s[1] == '[') {
+		str_append(l, " (", 2);
+		str_insert(r, 0, ")", 1);
+	} else if (str_length(r) > 0 && r->str_s[0] == '('){
+		str_append(l, "(", 0);
+		str_insert(r, 0, ")", 1);
+	}
+}
+
+// <type> ::= <builtin-type>
+//        ::= <function-type>
+//        ::= <class-enum-type>
+//        ::= <array-type>
+//        ::= <pointer-to-member-type>
+//        ::= <template-param>
+//        ::= <template-template-param> <template-args>
+//        ::= <decltype>
+//        ::= <substitution>
+//        ::= <CV-qualifiers> <type>
+//        ::= P <type>        # pointer-to
+//        ::= R <type>        # reference-to
+//        ::= O <type>        # rvalue reference-to (C++0x)
+//        ::= C <type>        # complex pair (C 2000)
+//        ::= G <type>        # imaginary (C 2000)
+//        ::= Dp <type>       # pack expansion (C++0x)
+//        ::= U <source-name> <type>  # vendor extended type qualifier
+// extension := U <objc-name> <objc-type>  # objc-type<identifier>
+// extension := <vector-type> # <vector-type> starts with Dv
+
+// <objc-name> ::= <k0 number> objcproto <k1 number> <identifier>  # k0 = 9 + <number of digits in k1> + k1
+// <objc-type> := <source-name>  # PU<11+>objcproto 11objc_object<source-name> 11objc_object -> id<source-name>
+static const char *
+parse_type(const char *first, const char *last, cpp_db_t *db)
+{
+	if (first == last)
+		return (first);
+
+	switch (first[0]) {
+	case 'r':
+	case 'V':
+	case 'K':
+		return (parse_qual_type(first, last, db));
+	}
+
+	const char *t = first;
+	const char *t1 = NULL;
+	size_t n = nlen(db);
+
+	t = parse_builtin_type(first, last, db);
+	if (t != first)
+		return (t);
+
+	switch (first[0]) {
+	case 'A':
+		t = parse_array_type(first, last, db);
+		if (t == first || NAMT(db, n) == 0)
+			return (first);
+		save_top(db, 1);
+		return (t);
+
+	case 'C':
+		t = parse_type(first + 1, last, db);
+		if (t == first + 1 || NAMT(db, n) == 0)
+			return (first);
+
+		str_append(TOP_L(db), " complex", 8);
+		save_top(db, 1);
+		return (t);
+
+	case 'F':
+		t = parse_function_type(first, last, db);
+		if (t == first || NAMT(db, n) == 0)
+			return (first);
+		save_top(db, 1);
+		return (t);
+
+	case 'G':
+		t = parse_type(first + 1, last, db);
+		if (t == first + 1 || NAMT(db, n) == 0)
+			return (first);
+
+		str_append(TOP_L(db), " imaginary", 10);
+		save_top(db, 1);
+		return (t);
+
+	case 'M':
+		t = parse_pointer_to_member_type(first, last, db);
+		if (t == first || NAMT(db, n) == 0)
+			return (first);
+		save_top(db, 1);
+		return (t);
+
+	case 'O':
+		t = parse_type(first + 1, last, db);
+		if (t == first + 1 || NAMT(db, n) == 0)
+			return (first);
+
+		for (size_t i = n; i < nlen(db); i++) {
+			str_pair_t *sp = name_at(&db->cpp_name, i);
+
+			paren(sp);
+			str_append(&sp->strp_l, "&&", 2);
+		}
+		save_top(db, NAMT(db, n));
+		return (t);
+
+	case 'P':
+		t = parse_type(first + 1, last, db);
+		if (t == first + 1)
+			return (first);
+
+		for (size_t i = n; i < nlen(db); i++) {
+			str_pair_t *sp = name_at(&db->cpp_name, i);
+			str_t *l = &sp->strp_l;
+
+			paren(sp);
+			if (first[1] != 'U' ||
+			    strncmp(l->str_s, "objc_object<", 12) != 0) {
+				str_append(l, "*", 1);
+			} else {
+				str_erase(l, 0, 11);
+				str_insert(l, 0, "id", 2);
+			}
+		}
+		save_top(db, NAMT(db, n));
+		return (t);
+
+	case 'R':
+		t = parse_type(first + 1, last, db);
+		if (t == first + 1)
+			return (first);
+
+		for (size_t i = n; i < nlen(db); i++) {
+			str_pair_t *sp = name_at(&db->cpp_name, i);
+
+			paren(sp);
+			str_append(&sp->strp_l, "&", 1);
+		}
+
+		save_top(db, NAMT(db, n));
+		return (t);
+
+	case 'T':
+		t = parse_template_param(first, last, db);
+		if (t == first)
+			return (first);
+
+		save_top(db, NAMT(db, n));
+		if (!db->cpp_try_to_parse_template_args || NAMT(db, n) != 1)
+			return (t);
+
+		t1 = parse_template_args(t, last, db);
+		if (t1 == t)
+			return (t);
+
+		nfmt(db, "{1:L}{0}", "{1:R}");
+		save_top(db, 1);
+		return (t);
+
+	case 'U':
+		if (first + 1 == last)
+			return (first);
+
+		t = parse_source_name(first + 1, last, db);
+		if (t == first + 1)
+			return (first);
+
+		t1 = parse_type(t, last, db);
+		if (t1 == t || NAMT(db, n) < 2)
+			return (first);
+
+		if (strncmp(TOP_L(db)->str_s, "objcproto", 9) != 0) {
+			nfmt(db, "{0} {1}", NULL);
+		} else {
+			nfmt(db, "{0}", NULL);
+			str_t *s = TOP_L(db);
+
+			t = parse_source_name(s->str_s + 9, s->str_s + s->str_len, db);
+			if (t != s->str_s + 9)
+				nfmt(db, "{1}<{0}>", NULL);
+			else
+				nfmt(db, "{1} {0}", NULL);
+		}
+
+		save_top(db, 1);
+		return (t1);
+
+	case 'S':
+		if (first + 1 != last && first[1] == 't') {
+			t = parse_name(first, last, NULL, db);
+			if (t == first || NAMT(db, n) == 0)
+				return (first);
+
+			save_top(db, 1);
+			return (t);
+		}
+
+		t = parse_substitution(first, last, db);
+		if (t == first)
+			return (first);
+
+		/*
+		 * If the substitution is a <template-param>, it might
+		 * be followed by <template-args>
+		 */
+		t1 = parse_template_args(t, last, db);
+		if (t1 == t)
+			return (t);
+
+		if (NAMT(db, n) < 2)
+			return (first);
+
+		nfmt(db, "{1:L}{0}", "{1:R}");
+		save_top(db, 1);
+		return (t1);
+
+	case 'D':
+		if (first + 1 == last)
+			return (first);
+
+		switch (first[1]) {
+		case 'p':
+			t = parse_type(first + 2, last, db);
+			if (t == first + 2)
+				break;
+
+			save_top(db, NAMT(db, n));
+			return (t);
+
+		case 't':
+		case 'T':
+			t = parse_decltype(first, last, db);
+			if (first == t)
+				break;
+
+			save_top(db, 1);
+			return (t);
+
+		case 'v':
+			t = parse_vector_type(first, last, db);
+			if (first == t)
+				break;
+
+			if (NAMT(db, n) == 0)
+				return (first);
+
+			save_top(db, 1);
+			return (t);
+		}
+		break;
+	}
+
+	/*
+	 * must check for builtin-types before class-enum-types to avoid
+	 * ambiguities with operator-names
+	 */
+	t = parse_builtin_type(first, last, db);
+	if (t != first)
+		return (t);
+
+	t = parse_name(first, last, NULL, db);
+	if (t == first || NAMT(db, n) == 0)
+		return (first);
+
+	save_top(db, 1);
+	return (t);
+}
+
+static const char *
+parse_qual_type(const char *first, const char *last, cpp_db_t *db)
+{
+	const char *t = NULL;
+	const char *t1 = NULL;
+	unsigned cv = 0;
+
+	t = parse_cv_qualifiers(first, last, &cv);
+	if (t == first)
+		return (first);
+
+	size_t n = nlen(db);
+	boolean_t is_func = !!(t[0] == 'F');
+
+	t1 = parse_type(t, last, db);
+	if (t == t1)
+		return (first);
+
+	if (is_func)
+		sub_pop(&db->cpp_subs);
+
+	for (size_t i = n; i < nlen(db); i++) {
+		str_pair_t *sp = name_at(&db->cpp_name, i);
+		str_t *s = NULL;
+
+		if (!is_func) {
+			s = &sp->strp_l;
+			if (cv & 1)
+				str_append(s, "  const", 6);
+			if (cv & 2)
+				str_append(s, " volatile", 9);
+			if (cv & 4)
+				str_append(s, " restrict", 9);
+
+			continue;
+		}
+
+		s = &sp->strp_r;
+		size_t pos = str_length(s);
+
+		if (s->str_s[pos - 1] == '&') {
+			pos--;
+			if (s->str_s[pos - 1] == '&')
+				pos--;
+		}
+
+		if (cv & 1) {
+			str_insert(s, pos, " const", 6);
+			pos += 6;
+		}
+		if (cv & 2) {
+			str_insert(s, pos, " volatile", 9);
+			pos += 9;
+		}
+		if (cv & 4) {
+			str_insert(s, pos, " restrict", 9);
+		}
+	}
+
+	save_top(db, NAMT(db, n));
+	return (t1);
+}
+
 /*
  * at <type>		# alignof (a type)
  * az <expression>	# alignof (a expression)
@@ -1674,14 +2022,14 @@ parse_unresolved_type(const char *first, const char *last, cpp_db_t *db)
 				(void) name_pop(&db->cpp_name, NULL);
 			return (first);
 		}
-		save_top(db);
+		save_top(db ,1);
 		return (t);
 
 	case 'D':
 		t = parse_decltype(first, last, db);
 		if (t == first || NAMT(db, n) == 0)
 			return (first);
-		save_top(db);
+		save_top(db, 1);
 		return (t);
 
 	case 'S':
@@ -1697,29 +2045,11 @@ parse_unresolved_type(const char *first, const char *last, cpp_db_t *db)
 			return (first);
 
 		nfmt(db, "std::{0:L}", "{0:R}");
-		save_top(db);
+		save_top(db, 1);
 		return (t);
 	}
 
 	return (first);
-}
-
-// <destructor-name> ::= <unresolved-type>                               # e.g., ~T or ~decltype(f())
-//                   ::= <simple-id>                                     # e.g., ~A<2*N>
-static const char *
-parse_destructor_type(const char *first, const char *last, cpp_db_t *db)
-{
-	if (first == last)
-		return (first);
-
-	const char *t = parse_unresolved_type(first, last, db);
-
-	if (first != t) {
-		nfmt(db, "~{0:L}", "{0:R}");
-		return (t);
-	}
-
-	return (parse_simple_id(first, last, db));
 }
 
 // sp <expression>                                  # pack expansion
@@ -2021,11 +2351,128 @@ parse_integer_literal(const char *first, const char *last, const char *fmt,
 	return (t + 1);
 }
 
+static struct float_data_s {
+	const char *spec;
+	size_t mangled_size;
+	size_t max_demangled_size;
+	char type;
+} float_info[] = {
+	{ "%af", 8, 24, 'f' },		/* float */
+	{ "%a", 16, 32, 'd' },		/* double */
+	{ "%LaL", 20, 40, 'e' }		/* long double */
+};
+
 static const char *
 parse_floating_literal(const char *first, const char *last, cpp_db_t *db)
 {
-	// XXX TODO
-	return (NULL);
+	ASSERT(first[0] == 'f' || first[0] == 'd' || first[0] == 'e');
+
+	const struct float_data_s *fd = NULL;
+
+	for (size_t i = 0; i < ARRAY_SIZE(float_info); i++) {
+		if (float_info[i].type != first[0])
+			continue;
+
+		fd = &float_info[i];
+		break;
+	}
+
+	if (fd == NULL || (size_t)(last - first) < fd->mangled_size)
+		return (first);
+
+	union {
+		union {
+			float v;
+			char buf[sizeof (float)];
+		} f;
+		union {
+			double v;
+			char buf[sizeof (double)];
+		} d;
+		union {
+			long double v;
+			char buf[sizeof (long double)];
+		} ld;
+	} conv;
+
+	const char *t = NULL;
+	char *e = NULL;
+
+	switch (first[0]) {
+	case 'f':
+		e = conv.f.buf;
+		break;
+	case 'd':
+		e = conv.d.buf;
+		break;
+	case 'e':
+		e = conv.ld.buf;
+		break;
+	}
+	last = first + fd->mangled_size + 1;
+
+#if defined(_BIG_ENDIAN)
+	for (t = first + 1; t != last; t++, e++) {
+		if (!is_xdigit(t[0]))
+			return (first);
+
+		unsigned d1 = is_digit(t[0]) ? t[0] - '0' : t[0] - 'a' + 10;
+		t++;
+		unsigned d0 = is_digit(t[0]) ? t[0] - '0' : t[0] - 'a' + 10;
+
+		*e = (d1 << 4) + d0;
+	}
+#elif defined(_LITTLE_ENDIAN)
+	for (t = last - 1; t > first; t--, e++) {
+		if (!is_xdigit(t[0]))
+			return (first);
+
+		unsigned d0 = is_digit(t[0]) ? t[0] - '0' : t[0] - 'a' + 10;
+		t--;
+		unsigned d1 = is_digit(t[0]) ? t[0] - '0' : t[0] - 'a' + 10;
+
+		*e = (d1 << 4) + d0;
+	}
+	t = last;
+#else
+#error One of _BIG_ENDIAN or _LITTLE_ENDIAN must be defined
+#endif
+
+	if (t[0] != 'E')
+		return (first);
+
+	str_t num = { 0 };
+	str_init(&num, db->cpp_ops);
+
+	num.str_size = fd->max_demangled_size + 1;
+	num.str_s = zalloc(db->cpp_ops, num.str_size);
+	CK(num.str_s != NULL);
+
+	int n = 0;
+
+	switch (first[0]) {
+	case 'f':
+		n = snprintf(num.str_s, fd->max_demangled_size, fd->spec,
+		    conv.f.v);
+		break;
+	case 'd':
+		n = snprintf(num.str_s, fd->max_demangled_size, fd->spec,
+		    conv.d.v);
+		break;
+	case 'e':
+		n = snprintf(num.str_s, fd->max_demangled_size, fd->spec,
+		    conv.ld.v);
+	}
+
+	if (n >= fd->max_demangled_size || n <= 0) {
+		str_fini(&num);
+		return (first);
+	}
+
+	num.str_len = n;
+	name_add_str(&db->cpp_name, &num, NULL);
+
+	return (t + 1);
 }
 
 /*
@@ -2071,13 +2518,13 @@ parse_expr_primary(const char *first, const char *last, cpp_db_t *db)
 		return (parse_integer_literal(first + 2, last, "(char){0}", db));
 	case 'd':
 		// double
-		return (parse_floating_literal(first + 2, last, db));
+		return (parse_floating_literal(first + 1, last, db));
 	case 'e':
 		// long double
-		return (parse_floating_literal(first + 2, last, db));
+		return (parse_floating_literal(first + 1, last, db));
 	case 'f':
 		// float
-		return (parse_floating_literal(first + 2, last, db));
+		return (parse_floating_literal(first + 1, last, db));
 	case 'h':
 		return (parse_integer_literal(first + 2, last, "(unsigned char){0}", db));
 	case 'i':
@@ -3096,6 +3543,14 @@ is_upper(int c)
 	return (B_TRUE);
 }
 
+static inline boolean_t
+is_xdigit(int c)
+{
+	if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
+		return (B_TRUE);
+	return (B_FALSE);
+}
+
 static boolean_t
 nempty(cpp_db_t *db)
 {
@@ -3129,9 +3584,9 @@ nfmt(cpp_db_t *db, const char *fmt_l, const char *fmt_r)
 }
 
 static void
-save_top(cpp_db_t *db)
+save_top(cpp_db_t *db, size_t amt)
 {
-	CK(sub_save(&db->cpp_subs, &db->cpp_name, 1));
+	CK(sub_save(&db->cpp_subs, &db->cpp_name, amt));
 }
 
 static void
