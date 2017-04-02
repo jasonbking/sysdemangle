@@ -15,11 +15,12 @@
 
 #include <string.h>
 #include "sysdemangle.h"
+#include "util.h"
 
-extern char *cpp_demangle(const char *, sysdem_ops_t *);
+extern char *cpp_demangle(const char *, sysdem_ops_t *, char **);
 
 char *
-sysdemangle(const char *str, sysdem_ops_t *ops)
+sysdemangle(const char *str, sysdem_ops_t *ops, char **dbg)
 {
 	size_t n = strlen(str);
 
@@ -29,9 +30,12 @@ sysdemangle(const char *str, sysdem_ops_t *ops)
 	if (str[0] != '_')
 		return (NULL);
 
+	if (ops == NULL)
+		ops = sysdem_ops_default;
+	
 	switch (str[1]) {
 	case 'Z':
-		return (cpp_demangle(str, ops));
+		return (cpp_demangle(str, ops, dbg));
 	}
 
 	return (NULL);

@@ -185,7 +185,7 @@ name_join(name_t *n, size_t amt, const char *sep)
 	ASSERT3U(amt, <=, n->nm_len);
 
 	/* a join of 0 elements just implies merging the top str_pair_t */
-	if (amt == 0) {
+	if (amt == 0 || amt == 1) {
 		if (n->nm_len > 0) {
 			return (str_pair_merge(name_top(n)));
 		}
@@ -194,7 +194,7 @@ name_join(name_t *n, size_t amt, const char *sep)
 
 	(void) str_init(&res, n->nm_ops);
 
-	sp = name_at(n, n->nm_len - amt);
+	sp = name_at(n, amt - 1);
 	for (size_t i = 0; i < amt; i++) {
 		if (i > 0) {
 			if (!str_append(&res, sep, seplen))
@@ -372,18 +372,18 @@ sub_reserve(sub_t *sub, size_t amt)
 	if (sub->sub_len + amt < sub->sub_size)
 		return (B_TRUE);
 
-	size_t newsize = roundup(sub->sub_size, CHUNK_SIZE);
+	size_t newsize = roundup(sub->sub_size + amt, CHUNK_SIZE);
 	void *temp = xrealloc(sub->sub_ops, sub->sub_items,
 	    sub->sub_size * sizeof (name_t), newsize * sizeof (name_t));
 
 	if (temp == NULL)
 		return (B_FALSE);
 
-	for (size_t i = sub->sub_len; i < newsize; i++)
-		name_init(&sub->sub_items[i], sub->sub_ops);
-
 	sub->sub_items = temp;
 	sub->sub_size = newsize;
+
+	for (size_t i = sub->sub_len; i < newsize; i++)
+		name_init(&sub->sub_items[i], sub->sub_ops);
 
 	return (B_TRUE);
 }
@@ -392,6 +392,8 @@ sub_reserve(sub_t *sub, size_t amt)
 boolean_t
 sub_save(sub_t *sub, const name_t *n, size_t depth)
 {
+	ASSERT3U(depth, >=, 0);
+
 	if (!sub_reserve(sub, 1))
 		return (B_FALSE);
 
@@ -399,7 +401,7 @@ sub_save(sub_t *sub, const name_t *n, size_t depth)
 	if (!name_reserve(dest, depth))
 		return (B_FALSE);
 
-	const str_pair_t *src_sp = name_at((name_t *)n, depth);
+	const str_pair_t *src_sp = name_at((name_t *)n, depth - 1);
 
 	for (size_t i = 0; i < depth; i++, src_sp++) {
 		str_pair_t copy;

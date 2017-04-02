@@ -57,7 +57,7 @@ typedef struct sysdem_alloc_s {
 	void (*free)(void *, size_t);
 } sysdem_ops_t;
 	
-char *sysdemangle(const char *, sysdem_ops_t *);
+char *sysdemangle(const char *, sysdem_ops_t *, char **);
 
 #ifdef __cplusplus
 }

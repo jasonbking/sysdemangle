@@ -31,18 +31,19 @@ static uint64_t success;
 static void
 run_test_list(test_list_t *tl)
 {
+	char *buf = NULL;
 	uint64_t l_total = 0;
 	uint64_t l_success = 0;
 
 	(void) printf("# Test: %s\n", tl->desc);
 
 	for (size_t i = 0; i < tl->ntests; i++) {
-		char *result = sysdemangle(tl->tests[i].mangled, NULL);
+		char *result = sysdemangle(tl->tests[i].mangled, NULL, &buf);
 
 		if (result == NULL ||
 		    strcmp(result, tl->tests[i].demangled) != 0) {
 			(void) printf("%zu failed:\n", i + 1);
-			(void) printf("     mangled named: %s\n",
+			(void) printf("      mangled name: %s\n",
 			    tl->tests[i].mangled);
 			(void) printf("  demangled result: ");
 			if (result != NULL) {
@@ -50,12 +51,17 @@ run_test_list(test_list_t *tl)
 			} else {
 				(void) printf("error: %s\n", strerror(errno));
 			}
-			(void) fputc('\n', stdout);
+			(void) printf("          expected: %s\n",
+			    tl->tests[i].demangled);
+			if (buf != NULL)
+				(void) printf("%s\n", buf);
 		} else {
 			l_success++;
 		}
 
 		free(result);
+		free(buf);
+		buf = NULL;
 		l_total++;
 	}
 
