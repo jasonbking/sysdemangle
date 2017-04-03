@@ -307,8 +307,11 @@ demangle(const char *first, const char *last, cpp_db_t *db)
 	if (first[1] == 'Z') {
 		t = parse_encoding(first + 2, last, db);
 
-		if (t != first + 2 && t != last && t[0] == '.')
+		if (t != first + 2 && t != last && t[0] == '.') {
 			t = parse_dot_suffix(t, last, db);
+			if (nlen(db) > 1)
+				njoin(db, 2, "");
+		}
 
 		goto done;
 	}
@@ -396,7 +399,7 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 	unsigned ref = 0;
 	boolean_t tag_templ_save = db->cpp_tag_templates;
 
-	if (db->cpp_depth++ > 1)
+	if (++db->cpp_depth > 1)
 		db->cpp_tag_templates = B_TRUE;
 
 	if (first[0] == 'G' || first[0] == 'T') {
@@ -407,7 +410,7 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 	boolean_t ends_with_template_args = B_FALSE;
 	t = parse_name(first, last, &ends_with_template_args, db);
 	if (t == first)
-		goto done;
+		goto fail;
 
 	cv = db->cpp_cv;
 	ref = db->cpp_ref;
@@ -453,6 +456,8 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 		njoin(db, NAMT(db, n), ", ");
 	}
 
+	nfmt(db, "({0})", NULL);
+
 	str_t *s = TOP_L(db);
 
 	if (cv & CPP_QUAL_CONST) {
@@ -471,7 +476,7 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 		CK(str_append(s, " &&", 0));
 	}
 
-	nfmt(db, "{1:L}({0}){1:R}", NULL);
+	nfmt(db, "{1:L}{0}{1:R}", NULL);
 
 done:
 	db->cpp_tag_templates = tag_templ_save;
@@ -831,12 +836,13 @@ parse_nested_name(const char *first, const char *last,
 			if (t1 == t || t1 == last || nempty(db))
 				return (first);
 
-			if (!more)
+			if (!more) {
 				nfmt(db, "{0}", NULL);
-			else
+			} else {
 				nfmt(db, "{1:L}::{0}", "{1:R}");
+				save_top(db, 1);
+			}
 
-			save_top(db, 1);
 			more = B_TRUE;
 			pop_subs = B_TRUE;
 			t = t1;
@@ -2358,35 +2364,40 @@ basename(cpp_db_t *db)
 	const char *start = s->str_s;
 	const char *end = s->str_s + s->str_len;
 
-	if (*end != '>') {
-		for (start = end - 1; start >= s->str_s; start--) {
-			if (start[0] == ':') {
-				start++;
+	/*
+	 * if name ends with a template i.e. <.....> back up to start
+	 * of outermost template
+	 */
+	unsigned c = 0;
+
+	if (end[-1] == '>') {
+		for (; end > start; end--) {
+			switch (end[-1]) {
+			case '<':
+				if (--c == 0) {
+					end--;
+					goto out;
+				}
+				break;
+			case '>':
+				c++;
 				break;
 			}
 		}
-		nadd_l(db, start, (size_t)(end - start));
+	}
+
+out:
+	if (end - start < 2)
 		return;
-	}
 
-	unsigned c = 1;
-
-	for (; end > start; end--) {
-		if (end[-1] == '<') {
-			c--;
-			if (c == 0) {
-				end--;
-				break;
-			}
-		} else if (end[-1] == '>') {
-			c++;
+	for (start = end; start >= s->str_s; start--) {
+		if (start[0] == ':') {
+			start++;
+			break;
 		}
 	}
 
-	if (end == start && c > 0)
-		nadd_l(db, "", 0);
-	else
-		nadd_l(db, start, (size_t)(end - start));
+	nadd_l(db, start, (size_t)(end - start));
 }
 
 /*
@@ -2820,7 +2831,7 @@ parse_operator_name(const char *first, const char *last, cpp_db_t *db)
 			continue;
 
 		nadd_l(db, op_tbl[i].op, 0);
-		return (first);
+		return (first + 2);
 	}
 
 	const char *t = NULL;
@@ -3755,6 +3766,7 @@ db_init(cpp_db_t *db, sysdem_ops_t *ops)
 	name_init(&db->cpp_name, ops);
 	sub_init(&db->cpp_subs, ops);
 	templ_init(&db->cpp_templ, ops);
+	db->cpp_tag_templates = B_TRUE;
 }
 
 static void

@@ -12,10 +12,9 @@ static struct {
     const char *mangled;
     const char *demangled;
 } test = {
-    "_ZN12_GLOBAL__N_1L11static_condE",
-    "(anonymous namespace)::static_cond"
+    "_ZNSs12_S_constructIPKcEEPcT_S3_RKSaIcESt20forward_iterator_tag",
+    "char* std::string::_S_construct<char const*>(char const*, char const*, std::allocator<char> const&, std::forward_iterator_tag)"
 };
-
 
 
 int main(int argc, const char * argv[]) {

@@ -352,6 +352,9 @@ sub_fini(sub_t *sub)
 void
 sub_clear(sub_t *sub)
 {
+	if (sub == NULL)
+		return;
+
 	for (size_t i = 0; i < sub->sub_len; i++) {
 		sysdem_ops_t *ops = sub->sub_items[i].nm_ops;
 		name_fini(&sub->sub_items[i]);
@@ -516,6 +519,8 @@ templ_pop(templ_t *tpl)
 sub_t *
 templ_top(templ_t *tpl)
 {
+	if (tpl->tpl_len == 0)
+		return (NULL);
 	return (&tpl->tpl_items[tpl->tpl_len - 1]);
 }
 
@@ -543,6 +548,9 @@ templ_sub(const templ_t *tpl, size_t idx, name_t *n)
 boolean_t
 templ_save(const name_t *n, size_t amt, templ_t *tpl)
 {
+	if (!templ_push(tpl))
+		return (B_FALSE);
+
 	sub_t *s = templ_top(tpl);
 	return (sub_save(s, n, amt));
 }
