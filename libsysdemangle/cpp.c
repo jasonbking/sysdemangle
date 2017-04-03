@@ -950,8 +950,11 @@ parse_template_arg(const char *first, const char *last, cpp_db_t *db)
 	switch (first[0]) {
 	case 'X':
 		t = parse_expression(first + 1, last, db);
-		if (t == first + 1)
+		if (t == first + 1 || t[0] != 'E')
 			return (first);
+
+		/* E */
+		t++;
 		break;
 
 	case 'J':
@@ -965,13 +968,22 @@ parse_template_arg(const char *first, const char *last, cpp_db_t *db)
 				return (first);
 			t = t1;
 		}
+
+		/* E */
+		t++;
 		break;
 
 	case 'L':
-		if (first + 1 == last || first[1] != 'Z')
+		if (first + 1 == last || first[1] != 'Z') {
 			t = parse_expr_primary(first, last, db);
-		else
+		} else {
 			t = parse_encoding(first + 2, last, db);
+			if (t == first + 2 || t == last || t[0] != 'E')
+				return (first);
+
+			/* E */
+			t++;
+		}
 		break;
 
 	default:
@@ -1131,7 +1143,7 @@ parse_expression(const char *first, const char *last, cpp_db_t *db)
 		return (first);
 
 	for (size_t i = 0; i < ARRAY_SIZE(expr_tbl); i++) {
-		if (strcmp(expr_tbl[i].code, first) != 0)
+		if (strncmp(expr_tbl[i].code, first, 2) != 0)
 			continue;
 		switch (expr_tbl[i].fntype) {
 		case EXPR_ARG:
@@ -1630,8 +1642,9 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 		if (t == first)
 			return (first);
 
-		save_top(db, NAMT(db, n));
-		if (!db->cpp_try_to_parse_template_args || NAMT(db, n) != 1)
+		amt = NAMT(db, n);
+		save_top(db, amt);
+		if (!db->cpp_try_to_parse_template_args || amt != 1)
 			return (t);
 
 		t1 = parse_template_args(t, last, db);
@@ -1848,7 +1861,7 @@ parse_sizeof(const char *first, const char *last, cpp_db_t *db)
 	if (last - first < 2)
 		return (first);
 
-	ASSERT3U(first[0], == ,'s');
+	ASSERT3U(first[0], ==, 's');
 
 	const char *t = NULL;
 
@@ -2390,7 +2403,7 @@ out:
 	if (end - start < 2)
 		return;
 
-	for (start = end; start >= s->str_s; start--) {
+	for (start = end; start > s->str_s; start--) {
 		if (start[0] == ':') {
 			start++;
 			break;
@@ -2966,7 +2979,7 @@ parse_base36(const char *first, const char *last, size_t *val)
 		if (is_digit(t[0]))
 			*val += t[0] - '0';
 		else
-			*val += t[0] - 'A';
+			*val += t[0] - 'A' + 10;
 	}
 	return (t);
 }
@@ -3167,10 +3180,10 @@ parse_array_type(const char *first, const char *last, cpp_db_t *db)
 	 * " [yyy][xxx]"
 	 */
 	str_t *r = &name_top(&db->cpp_name)->strp_r;
-	if (r->str_len > 1 || r->str_s[0] == ' ' || r->str_s[1] == '[')
+	if (r->str_len > 1 && r->str_s[0] == ' ' && r->str_s[1] == '[')
 		str_erase(r, 0, 1);
 
-	nfmt(db, "{1:L}", " [{0}]{1:R}");
+	nfmt(db, "{0:L}", " [{1}]{0:R}");
 	return (t1);
 }
 
@@ -3514,6 +3527,9 @@ parse_template_param(const char *first, const char *last, cpp_db_t *db)
 	if (first[1] != '_')
 		idx++;
 
+	/* skip _ */
+	t++;
+
 	if (tempty(db))
 		return (first);
 
@@ -3545,6 +3561,7 @@ parse_template_args(const char *first, const char *last, cpp_db_t *db)
 		if (db->cpp_tag_templates)
 			tpush(db);
 
+		size_t n1 = nlen(db);
 		const char *t1 = parse_template_arg(t, last, db);
 
 		if (db->cpp_tag_templates)
@@ -3554,7 +3571,7 @@ parse_template_args(const char *first, const char *last, cpp_db_t *db)
 			return (first);
 
 		if (db->cpp_tag_templates)
-			tsave(db, NAMT(db, n));
+			tsave(db, NAMT(db, n1));
 
 		t = t1;
 	}
@@ -3637,10 +3654,13 @@ parse_cv_qualifiers(const char *first, const char *last, unsigned *cv)
 static const char *
 parse_number(const char *first, const char *last)
 {
-	const char *t = first + 1;
+	const char *t = first;
 
 	if (first == last || (first[0] != 'n' && !is_digit(first[0])))
 		return (first);
+
+	if (t[0] == 'n')
+		t++;
 
 	if (t[0] == '0')
 		return (t + 1);
@@ -3767,6 +3787,7 @@ db_init(cpp_db_t *db, sysdem_ops_t *ops)
 	sub_init(&db->cpp_subs, ops);
 	templ_init(&db->cpp_templ, ops);
 	db->cpp_tag_templates = B_TRUE;
+	tpush(db);
 }
 
 static void

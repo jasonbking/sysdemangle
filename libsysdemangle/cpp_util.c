@@ -355,11 +355,9 @@ sub_clear(sub_t *sub)
 	if (sub == NULL)
 		return;
 
-	for (size_t i = 0; i < sub->sub_len; i++) {
-		sysdem_ops_t *ops = sub->sub_items[i].nm_ops;
+	for (size_t i = 0; i < sub->sub_len; i++)
 		name_fini(&sub->sub_items[i]);
-		name_init(&sub->sub_items[i], ops);
-	}
+
 	sub->sub_len = 0;
 }
 
@@ -392,7 +390,8 @@ sub_reserve(sub_t *sub, size_t amt)
 boolean_t
 sub_save(sub_t *sub, const name_t *n, size_t depth)
 {
-	ASSERT3U(depth, >=, 0);
+	if (depth == 0)
+		return (B_TRUE);
 
 	if (!sub_reserve(sub, 1))
 		return (B_FALSE);
@@ -540,7 +539,7 @@ templ_top_empty(const templ_t *tpl)
 boolean_t
 templ_sub(const templ_t *tpl, size_t idx, name_t *n)
 {
-	const sub_t *sub = &tpl->tpl_items[tpl->tpl_len - 1];
+	const sub_t *sub = templ_top((templ_t *)tpl);
 
 	return (sub_substitute(sub, idx, n));
 }
@@ -548,8 +547,7 @@ templ_sub(const templ_t *tpl, size_t idx, name_t *n)
 boolean_t
 templ_save(const name_t *n, size_t amt, templ_t *tpl)
 {
-	if (!templ_push(tpl))
-		return (B_FALSE);
+	ASSERT3U(tpl->tpl_len, >, 0);
 
 	sub_t *s = templ_top(tpl);
 	return (sub_save(s, n, amt));

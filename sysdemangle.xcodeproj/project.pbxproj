@@ -81,6 +81,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		EE2913BD1E91F7C80037E265 /* cxa_demangle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = cxa_demangle.cpp; sourceTree = "<group>"; };
 		EE9835B51E837C0F009983C4 /* libsysdemangle */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = libsysdemangle; sourceTree = BUILT_PRODUCTS_DIR; };
 		EE9835BF1E837C3A009983C4 /* sysdemangle.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = sysdemangle.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
 		EE9835C01E837DFB009983C4 /* str.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = str.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
@@ -168,6 +169,7 @@
 		EE9835B71E837C0F009983C4 /* sysdemangle */ = {
 			isa = PBXGroup;
 			children = (
+				EE2913BD1E91F7C80037E265 /* cxa_demangle.cpp */,
 				EE9835BF1E837C3A009983C4 /* sysdemangle.h */,
 				EE9835C01E837DFB009983C4 /* str.h */,
 				EE9835CF1E838919009983C4 /* str.c */,
@@ -647,6 +649,7 @@
 				EEBB4B6F1E90A08B0043B237 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		EEBB4B811E90A37F0043B237 /* Build configuration list for PBXNativeTarget "one" */ = {
 			isa = XCConfigurationList;
@@ -655,6 +658,7 @@
 				EEBB4B831E90A37F0043B237 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

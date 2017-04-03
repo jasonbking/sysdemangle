@@ -12,8 +12,8 @@ static struct {
     const char *mangled;
     const char *demangled;
 } test = {
-    "_ZNSs12_S_constructIPKcEEPcT_S3_RKSaIcESt20forward_iterator_tag",
-    "char* std::string::_S_construct<char const*>(char const*, char const*, std::allocator<char> const&, std::forward_iterator_tag)"
+    "_ZN5Casts8implicitILj4EEEvPN9enable_ifIXstT_EvE4typeE",
+    "void Casts::implicit<4u>(enable_if<sizeof (4u), void>::type*)"
 };
 
 
