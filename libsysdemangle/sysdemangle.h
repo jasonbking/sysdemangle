@@ -52,12 +52,17 @@ typedef enum {
 #include <sys/isa_defs.h>
 #endif /* __sun */
 
+typedef enum sysdem_lang_e {
+	SYSDEM_LANG_AUTO,
+	SYSDEM_LANG_CPP
+} sysdem_lang_t;
+
 typedef struct sysdem_alloc_s {
 	void *(*alloc)(size_t);
 	void (*free)(void *, size_t);
 } sysdem_ops_t;
 	
-char *sysdemangle(const char *, sysdem_ops_t *, char **);
+char *sysdemangle(const char *, sysdem_lang_t, sysdem_ops_t *, char **);
 
 #ifdef __cplusplus
 }

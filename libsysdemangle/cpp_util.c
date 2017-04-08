@@ -550,6 +550,21 @@ templ_save(const name_t *n, size_t amt, templ_t *tpl)
 	ASSERT3U(tpl->tpl_len, >, 0);
 
 	sub_t *s = templ_top(tpl);
-	return (sub_save(s, n, amt));
+	boolean_t res = B_TRUE;
+
+	/* a bit of a hack -- want an 'empty' entry when saving 0 params */
+	if (amt == 0) {
+		name_t name = { 0 };
+
+		name_init(&name, tpl->tpl_ops);
+		res &= name_add(&name, "", 0, "", 0);
+		if (res)
+			res &= sub_save(s, &name, 1);
+		name_fini(&name);
+	} else {
+		res &= sub_save(s, n, amt);
+	}
+
+	return (res);
 }
 

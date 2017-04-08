@@ -186,6 +186,7 @@ print_name(str_t *out, const name_t *n)
 
 }
 
+
 static void
 print_sub(str_t *out, const sub_t *sub)
 {
@@ -201,7 +202,8 @@ print_sub(str_t *out, const sub_t *sub)
 		if (i == 0) {
 			str_append(out, "  S_ = ", 0);
 		} else {
-			snprintf(buf, sizeof (buf), "  S%zu_ = ", i - 1);
+			(void) memset(buf, 0, sizeof (buf));
+			(void) snprintf(buf, sizeof (buf), "  S%zu_ = ", i - 1);
 			str_append(out, buf, 0);
 		}
 
@@ -217,6 +219,34 @@ print_sub(str_t *out, const sub_t *sub)
 }
 
 static void
+print_templ(const templ_t *tpl)
+{
+
+	printf("\nTemplate\n");
+
+	const sub_t *s = templ_top((templ_t *)tpl);
+
+	for (size_t i = 0; i < s->sub_len; i++) {
+		if (i == 0)
+			printf("T_ = ");
+		else
+			printf("T%zu_ = ", i - 1);
+
+		printf("{");
+
+		const name_t *n = &s->sub_items[i];
+		for (size_t j = 0; j < n->nm_len; j++) {
+			const str_pair_t *sp = &n->nm_items[j];
+			printf("{%.*s#%*.s}",
+			    (int)sp->strp_l.str_len, sp->strp_l.str_s,
+			    (int)sp->strp_r.str_len, sp->strp_r.str_s);
+		}
+		printf("}\n");
+	}
+	printf("\n");
+}
+
+static void
 dump(cpp_db_t *db, char **dbg)
 {
 	str_t s;
@@ -225,6 +255,7 @@ dump(cpp_db_t *db, char **dbg)
 
 	print_name(&s, &db->cpp_name);
 	print_sub(&s, &db->cpp_subs);
+	print_templ(&db->cpp_templ);
 
 	*dbg = zalloc(db->cpp_ops, s.str_len + 1);
 	(void) memcpy(*dbg, s.str_s, s.str_len);
@@ -243,8 +274,9 @@ cpp_demangle(const char *src, sysdem_ops_t *ops, char **dbg)
 	if (setjmp(db.cpp_jmp) != 0)
 		goto done;
 
+	errno = 0;
 	demangle(src, src + srclen, &db);
-
+	
 	if (errno == 0 && db.cpp_fix_forward_references &&
 	    !templ_empty(&db.cpp_templ) &&
 	    !sub_empty(&db.cpp_templ.tpl_items[0])) {
@@ -263,6 +295,9 @@ cpp_demangle(const char *src, sysdem_ops_t *ops, char **dbg)
 			goto done;
 		}
 	}
+
+	if (errno != 0)
+		goto done;
 
 	njoin(&db, 0, "");
 
@@ -296,6 +331,10 @@ demangle(const char *first, const char *last, cpp_db_t *db)
 
 	if (first[0] != '_') {
 		t = parse_type(first, last, db);
+		if (t == first) {
+			errno = EINVAL;
+			return;
+		}
 		goto done;
 	}
 
@@ -319,7 +358,7 @@ demangle(const char *first, const char *last, cpp_db_t *db)
 	if (first[1] != '_' || first[2] != '_' || first[3] != 'Z')
 		goto done;
 
-	t = parse_encoding(first + 2, last, db);
+	t = parse_encoding(first + 4, last, db);
 	if (t != first + 4 && t != last)
 		t = parse_block_invoke(t, last, db);
 
@@ -357,7 +396,7 @@ parse_block_invoke(const char *first, const char *last, cpp_db_t *db)
 	const char test[] = "_block_invoke";
 	const char *t = first;
 
-	if (strncmp(first, test, sizeof (test)) != 0)
+	if (strncmp(first, test, sizeof (test) - 1) != 0)
 		return (first);
 
 	t += sizeof (test);
@@ -439,24 +478,28 @@ parse_encoding(const char *first, const char *last, cpp_db_t *db)
 	if (t == last || nempty(db))
 		goto fail;
 
+	size_t n = nlen(db);
+
 	if (t[0] == 'v') {
 		t++;
-		nadd_l(db, "", 0);
 	} else {
-		size_t n = nlen(db);
 
 		/*CONSTCOND*/
 		while (1) {
 			t2 = parse_type(t, last, db);
-			if (t2 == t)
+			if (t2 == t || t == last)
 				break;
+
+			if (str_pair_len(name_top(&db->cpp_name)) == 0)
+				(void) name_pop(&db->cpp_name, NULL);
+
 			t = t2;
 		}
-
-		njoin(db, NAMT(db, n), ", ");
 	}
 
-	nfmt(db, "({0})", NULL);
+	size_t amt = NAMT(db, n);
+	njoin(db, amt, ", ");
+	nfmt(db, amt > 0 ? "({0})" : "()", NULL);
 
 	str_t *s = TOP_L(db);
 
@@ -583,7 +626,8 @@ parse_special_name(const char *first, const char *last, cpp_db_t *db)
 			t1 = parse_encoding(t, last, db);
 			if (t == t1)
 				return (first);
-				break;
+			t = t1;
+			break;
 		}
 		break;
 	case 'G':
@@ -1189,8 +1233,10 @@ parse_binary_expr(const char *first, const char *last, const char *op,
 	nadd_l(db, op, 0);
 
 	const char *t2 = parse_expression(t1, last, db);
-	if (t2 == t1)
+	if (t2 == t1) {
+		(void) name_pop(&db->cpp_name, NULL);
 		return (first);
+	}
 
 	nfmt(db, "({2}) {1} ({0})", NULL);
 	if (strcmp(op, ">") == 0)
@@ -1209,8 +1255,10 @@ parse_prefix_expr(const char *first, const char *last, const char *op,
 	nadd_l(db, op, 0);
 
 	const char *t = parse_expression(first + 2, last, db);
-	if (t == first + 2)
+	if (t == first + 2) {
+//		(void) name_pop(&db->cpp_name, NULL);
 		return (first);
+	}
 
 	nfmt(db, "{1}({0})", NULL);
 	return (t);
@@ -1261,7 +1309,7 @@ parse_new_expr(const char *first, const char *last, cpp_db_t *db)
 
 	while (t1 != last && t1[0] != '_') {
 		t2 = parse_expression(t1, last, db);
-		if (t1 == first + 2)
+		if (t2 == t1)
 			return (first);
 		t1 = t2;
 	}
@@ -1284,7 +1332,7 @@ parse_new_expr(const char *first, const char *last, cpp_db_t *db)
 			return (first);
 
 		t2 += 2;
-		const char *t3 = NULL;
+		const char *t3 = t2;
 		size_t n1 = nlen(db);
 
 		while (t2[0] != 'E' && t2 != last) {
@@ -1304,7 +1352,7 @@ parse_new_expr(const char *first, const char *last, cpp_db_t *db)
 	}
 
 	njoin(db, NAMT(db, n), " ");
-	return (t2);
+	return (t2 + 1);
 }
 
 static const char *
@@ -1588,15 +1636,17 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 
 	case 'O':
 		t = parse_type(first + 1, last, db);
-		if (t == first + 1 || NAMT(db, n) == 0)
+		amt = NAMT(db, n);
+		if (t == first + 1 || amt == 0)
 			return (first);
 
-		amt = NAMT(db, n);
 		sp = name_at(&db->cpp_name, amt - 1);
 		for (size_t i = 0; i < amt; i++, sp++) {
 			paren(sp);
-			str_append(&sp->strp_l, "&&", 2);
+			if (str_pair_len(sp) > 0)
+				str_append(&sp->strp_l, "&&", 2);
 		}
+
 		save_top(db, amt);
 		return (t);
 
@@ -1609,6 +1659,9 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 		sp = name_at(&db->cpp_name, amt - 1);
 		for (size_t i = 0; i < amt; i++, sp++) {
 			str_t *l = &sp->strp_l;
+
+			if (str_pair_len(sp) == 0)
+				continue;
 
 			paren(sp);
 			if (first[1] != 'U' ||
@@ -1630,6 +1683,10 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 		amt = NAMT(db, n);
 		sp = name_at(&db->cpp_name, amt - 1);
 		for (size_t i = 0; i < amt; i++, sp++) {
+			if (str_length(&sp->strp_l) == 0 &&
+			    str_length(&sp->strp_r) == 0)
+				continue;
+
 			paren(sp);
 			str_append(&sp->strp_l, "&", 1);
 		}
@@ -1653,7 +1710,7 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 
 		nfmt(db, "{1:L}{0}", "{1:R}");
 		save_top(db, 1);
-		return (t);
+		return (t1);
 
 	case 'U':
 		if (first + 1 == last)
@@ -1663,21 +1720,32 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 		if (t == first + 1)
 			return (first);
 
+		nfmt(db, "{0}", NULL);
+		const str_t *name = TOP_L(db);
+
 		t1 = parse_type(t, last, db);
 		if (t1 == t || NAMT(db, n) < 2)
 			return (first);
 
-		if (strncmp(TOP_L(db)->str_s, "objcproto", 9) != 0) {
+		if (strncmp(name->str_s, "objcproto", 9) != 0) {
 			nfmt(db, "{0} {1}", NULL);
 		} else {
-			nfmt(db, "{0}", NULL);
-			str_t *s = TOP_L(db);
-
-			t = parse_source_name(s->str_s + 9, s->str_s + s->str_len, db);
-			if (t != s->str_s + 9)
+			t = parse_source_name(name->str_s + 9,
+			    name->str_s + name->str_len, db);
+			if (t != name->str_s + 9) {
 				nfmt(db, "{1}<{0}>", NULL);
-			else
+
+				str_pair_t save = {0};
+
+				(void) name_pop(&db->cpp_name, &save);
+
+				/* get rid of 'objcproto' */
+				(void) name_pop(&db->cpp_name, NULL);
+				CK(name_add_str(&db->cpp_name, &save.strp_l,
+				    &save.strp_r));
+			} else {
 				nfmt(db, "{1} {0}", NULL);
+			}
 		}
 
 		save_top(db, 1);
@@ -1706,7 +1774,7 @@ parse_type(const char *first, const char *last, cpp_db_t *db)
 			return (t);
 
 		if (NAMT(db, n) < 2)
-			return (first);
+			return (t);
 
 		nfmt(db, "{1:L}{0}", "{1:R}");
 		save_top(db, 1);
@@ -1793,6 +1861,10 @@ parse_qual_type(const char *first, const char *last, cpp_db_t *db)
 
 		if (!is_func) {
 			s = &sp->strp_l;
+
+			if (str_length(s) == 0)
+				continue;
+
 			if (cv & 1)
 				str_append(s, " const", 6);
 			if (cv & 2)
@@ -1903,7 +1975,7 @@ parse_function_param(const char *first, const char *last, cpp_db_t *db)
 		t1 = t2;
 	}
 
-	if (t1[0] != 'p')
+	if (first[1] != 'p')
 		return (first);
 
 	t1 = parse_cv_qualifiers(t1, last, &cv);
@@ -1911,9 +1983,13 @@ parse_function_param(const char *first, const char *last, cpp_db_t *db)
 	if (t2 == last || t2[0] != '_')
 		return (first);
 
-	nadd_l(db, t1, (size_t)(t2 - t1));
+	if (t2 - t1 > 0)
+		nadd_l(db, t1, (size_t)(t2 - t1));
+	else
+		nadd_l(db, "", 0);
+
 	nfmt(db, "fp{0}", NULL);
-	return (t2);
+	return (t2 + 1);
 }
 
 // sZ <template-param>		# size of a parameter pack
@@ -2053,17 +2129,26 @@ parse_call_expr(const char *first, const char *last, cpp_db_t *db)
 	const char *t1 = NULL;
 	size_t n = nlen(db);
 
-	do {
+	for (t = first + 2; t != last && t[0] != 'E'; t = t1) {
 		t1 = parse_expression(t, last, db);
-		t = t1;
-	} while (t != last && t[0] != 'E');
+		if (t1 == t)
+			return (first);
+	}
 
-	if (t == last || NAMT(db, n) == 0)
+	size_t amt = NAMT(db, n);
+
+	if (t == last || amt == 0)
 		return (first);
 
-	njoin(db, NAMT(db, n) - 1, ", ");
-	nfmt(db, "{1}({0})", NULL);
-	return (t);
+	if (amt > 1) {
+		njoin(db, amt - 1, ", ");
+		nfmt(db, "{1}({0})", NULL);
+	} else {
+		nfmt(db, "{0}()", NULL);
+	}
+
+	ASSERT3U(t[0], ==, 'E');
+	return (t + 1);
 }
 
 // cv <type> <expression>                               # conversion with one argument
@@ -2080,6 +2165,7 @@ parse_conv_expr(const char *first, const char *last, cpp_db_t *db)
 
 	const char *t = NULL;
 	const char *t1 = NULL;
+	size_t n = nlen(db);
 
 	boolean_t try_to_parse_template_args =
 	    db->cpp_try_to_parse_template_args;
@@ -2091,12 +2177,12 @@ parse_conv_expr(const char *first, const char *last, cpp_db_t *db)
 	if (t == first + 2)
 		return (first);
 
-	size_t n = nlen(db);
-
 	if (t[0] != '_') {
 		t1 = parse_expression(t, last, db);
 		if (t1 == t)
 			return (first);
+
+		t = t1;
 	} else {
 		size_t n1 = nlen(db);
 
@@ -2109,10 +2195,21 @@ parse_conv_expr(const char *first, const char *last, cpp_db_t *db)
 			t1 = t;
 		}
 
+		/* E */
+		t++;
+
 		njoin(db, NAMT(db, n1), ", ");
+
+		if (NAMT(db, n1) == 0)
+			nadd_l(db, "", 0);
+
 	}
-	nfmt(db, (NAMT(db, n) > 1) ? "({1})({0})" : "({1})()", NULL);
-	return (t1);
+
+	if (NAMT(db, n) < 2)
+		return (first);
+
+	nfmt(db, "({1})({0})", NULL);
+	return (t);
 }
 
 // <simple-id> ::= <source-name> [ <template-args> ]
@@ -2286,25 +2383,54 @@ parse_unnamed_type_name(const char *first, const char *last, cpp_db_t *db)
 	const char *t1 = first + 2;
 	const char *t2 = NULL;
 
-	if (first[1] == 'l' && first[2] != 'v') {
+	if (first[1] == 't') {
+		while (t1 != last && t1[0] != '_' && is_digit(t1[0]))
+			t1++;
+
+		if (t1[0] != '_')
+			return (first);
+
+		if (t1 == first + 2)
+			nadd_l(db, "", 0);
+		else
+			nadd_l(db, first + 2, (size_t)(t1 - first - 2));
+
+		nfmt(db, "'unnamed{0}'", NULL);
+		return (t1 + 1);
+	}
+
+	if (first[2] != 'v') {
 		size_t n = nlen(db);
 
 		do {
 			t2 = parse_type(t1, last, db);
+			if (t1 == t2)
+				return (first);
 			t1 = t2;
 		} while (t1 != last && t1[0] != 'E');
 
-		if (t1 == last)
+		if (t1 == last || NAMT(db, n) < 1) {
+			njoin(db, NAMT(db, n), "");
+			(void) name_pop(&db->cpp_name, NULL);
 			return (first);
+		}
 
 		if (NAMT(db, n) < 1)
 			return (first);
 
 		njoin(db, NAMT(db, n), ", ");
-	} else if (first[1] == 'l' && first[2] == 'v') {
+
+		/* E */
+		t1++;
+	} else {
 		t1++;
 		if (t1[0] != 'E')
 			return (first);
+
+		nadd_l(db, "", 0);
+
+		/* E */
+		t1++;
 	}
 
 	t2 = t1;
@@ -2313,16 +2439,20 @@ parse_unnamed_type_name(const char *first, const char *last, cpp_db_t *db)
 			return (first);
 	}
 
-	if (t2[0] != '_')
+	if (t2[0] != '_') {
+		(void) name_pop(&db->cpp_name, NULL);
 		return (first);
+	}
 
-	nadd_l(db, t1, (size_t)(t2 - t1));
+	if (t2 - t1 > 0)
+		nadd_l(db, t1, (size_t)(t2 - t1));
+	else
+		nadd_l(db, "", 0);
 
-	const char *fmt = (first[1] == 'l') ?
-	    "'lambda'({0})" : "'unnamed{0}'";
+	nfmt(db, "'lambda{0}'({1})", NULL);
 
-	nfmt(db, fmt, NULL);
-	return (t2);
+	/* _ */
+	return (t2 + 1);
 }
 
 static struct {
@@ -2661,7 +2791,7 @@ parse_expr_primary(const char *first, const char *last, cpp_db_t *db)
 	case 'h':
 		return (parse_integer_literal(first + 2, last, "(unsigned char){0}", db));
 	case 'i':
-		return (parse_integer_literal(first + 2, last, NULL, db));
+		return (parse_integer_literal(first + 2, last, "{0}", db));
 	case 'j':
 		return (parse_integer_literal(first + 2, last, "{0}u", db));
 	case 'l':
@@ -3043,7 +3173,7 @@ parse_source_name(const char *first, const char *last, cpp_db_t *db)
 		n *= 10;
 		n += t[0] - '0';
 	}
-	if (n == 0 || t == last)
+	if (n == 0 || t == last || t + n > last)
 		return (first);
 
 	if (strncmp(t, "_GLOBAL__N", 10) == 0)
@@ -3087,10 +3217,10 @@ parse_vector_type(const char *first, const char *last, cpp_db_t *db)
 			if (t1 == t)
 				return (first);
 
-			nfmt(db, "{1:L} vector[{0}]", "{1:R}");
+			nfmt(db, "{0} vector[{1}]", NULL);
 			return (t1);
 		}
-		nfmt(db, "{1:L} pixel vector[{0}]", "{1:R}");
+		nfmt(db, "{0} pixel vector[{1}]", NULL);
 		return (t1);
 	}
 
@@ -3248,16 +3378,19 @@ parse_unresolved_name(const char *first, const char *last, cpp_db_t *db)
 
 	t2 = parse_base_unresolved_name(t, last, db);
 	if (t != t2) {
-		if (nempty(db))
-			return (first);
+		if (global) {
+			if (nempty(db))
+				return (first);
 
-		nfmt(db, "::{0:L}", "{0:R}");
+			str_insert(TOP_L(db), 0, "::", 2);
+		}
 		return (t2);
 	}
 
 	if (t[0] != 's' || t[1] != 'r' || last - t < 2)
 		return (first);
 
+	n = nlen(db);
 	if (t[2] == 'N') {
 		t += 3;
 		t2 = parse_unresolved_type(t, last, db);
@@ -3274,7 +3407,6 @@ parse_unresolved_name(const char *first, const char *last, cpp_db_t *db)
 			t = t2;
 		}
 
-		n = nlen(db);
 		while (t[0] != 'E') {
 			t2 = parse_unresolved_qualifier_level(t, last, db);
 			if (t == t2 || t == last || nlen(db) < 2)
@@ -3320,7 +3452,6 @@ parse_unresolved_name(const char *first, const char *last, cpp_db_t *db)
 	if (global && nlen(db) > 0)
 		nfmt(db, "::{0:L}", "{0:R}");
 
-	n = nlen(db);
 	while (t[0] != 'E') {
 		t2 = parse_unresolved_qualifier_level(t, last, db);
 		if (t == t2 || t == last || nlen(db) < 2)
@@ -3576,8 +3707,21 @@ parse_template_args(const char *first, const char *last, cpp_db_t *db)
 		t = t1;
 	}
 
-	njoin(db, NAMT(db, n), ", ");
+	/*
+	 * ugly, but if the last thing pushed was an empty string,
+	 * get rid of it so we dont get "..., "
+	 */
+	str_pair_t *sp = name_top(&db->cpp_name);
+	size_t len = str_pair_len(sp);
 
+	if (len == 0)
+		(void) name_pop(&db->cpp_name, NULL);
+
+	if (NAMT(db, n) == 0)
+		nadd_l(db, "", 0);
+	else
+		njoin(db, NAMT(db, n), ", ");
+	
 	/* make sure we don't bitshift ourselves into oblivion */
 	if (TOP_L(db)->str_s[TOP_L(db)->str_len - 1] == '>')
 		nfmt(db, "<{0} >", NULL);
@@ -3604,6 +3748,11 @@ parse_discriminator(const char *first, const char *last)
 	if (is_digit(first[0])) {
 		for (t = first; t != last && is_digit(t[0]); t++)
 			;
+
+		/* not at the end of the string */
+		if (t != last)
+			return (first);
+
 		return (t);
 	} else if (first[0] != '_' || first + 1 == last) {
 		return (first);
@@ -3787,6 +3936,7 @@ db_init(cpp_db_t *db, sysdem_ops_t *ops)
 	sub_init(&db->cpp_subs, ops);
 	templ_init(&db->cpp_templ, ops);
 	db->cpp_tag_templates = B_TRUE;
+	db->cpp_try_to_parse_template_args = B_TRUE;
 	tpush(db);
 }
 

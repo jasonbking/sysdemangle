@@ -28,4 +28,10 @@ typedef struct test_list_s {
 	size_t		ntests;
 } test_list_t;
 
+typedef struct test_fail_s {
+	const char *desc;
+	const char **names;
+	size_t n;
+} test_fail_t;
+
 #endif /* _TESTS_H */

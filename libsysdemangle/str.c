@@ -287,3 +287,8 @@ str_pair_copy(const str_pair_t *src, str_pair_t *dest)
 	return (B_TRUE);
 }
 
+size_t
+str_pair_len(const str_pair_t *sp)
+{
+	return (str_length(&sp->strp_l) + str_length(&sp->strp_r));
+}

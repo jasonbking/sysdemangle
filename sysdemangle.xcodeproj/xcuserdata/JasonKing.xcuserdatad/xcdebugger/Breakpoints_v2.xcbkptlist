@@ -74,12 +74,12 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "libsysdemangle/cpp.c"
-            timestampString = "512871132.328715"
+            timestampString = "513306241.083799"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "411"
-            endingLineNumber = "411"
-            landmarkName = "parse_encoding()"
+            startingLineNumber = "278"
+            endingLineNumber = "278"
+            landmarkName = "cpp_demangle()"
             landmarkType = "9">
          </BreakpointContent>
       </BreakpointProxy>
@@ -90,12 +90,44 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "libsysdemangle/cpp.c"
-            timestampString = "512888235.325058"
+            timestampString = "513316383.536917"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1861"
-            endingLineNumber = "1861"
-            landmarkName = "parse_sizeof()"
+            startingLineNumber = "3324"
+            endingLineNumber = "3324"
+            landmarkName = "parse_pointer_to_member_type()"
+            landmarkType = "9">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "libsysdemangle/cpp_util.c"
+            timestampString = "513317661.16302"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "542"
+            endingLineNumber = "542"
+            landmarkName = "templ_sub()"
+            landmarkType = "9">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "libsysdemangle/cpp.c"
+            timestampString = "513317877.487003"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "3714"
+            endingLineNumber = "3714"
+            landmarkName = "parse_template_args()"
             landmarkType = "9">
          </BreakpointContent>
       </BreakpointProxy>

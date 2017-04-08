@@ -24,6 +24,7 @@
 
 extern test_list_t *gcc_libstdc;
 extern test_list_t *llvm_pass_list;
+extern test_fail_t *llvm_fail;
 
 static uint64_t total;
 static uint64_t success;
@@ -38,7 +39,8 @@ run_test_list(test_list_t *tl)
 	(void) printf("# Test: %s\n", tl->desc);
 
 	for (size_t i = 0; i < tl->ntests; i++) {
-		char *result = sysdemangle(tl->tests[i].mangled, NULL, &buf);
+		char *result = sysdemangle(tl->tests[i].mangled,
+		    SYSDEM_LANG_CPP, NULL, &buf);
 
 		if (result == NULL ||
 		    strcmp(result, tl->tests[i].demangled) != 0) {
@@ -72,10 +74,32 @@ run_test_list(test_list_t *tl)
 	success += l_success;
 }
 
+static void
+run_fail(test_fail_t *fail)
+{
+	(void) printf("# %s\n", fail->desc);
+
+	for (size_t i = 0; i < fail->n; i++) {
+		errno = 0;
+
+		(void) printf("Fail test %zu: ", i);
+		char *res = sysdemangle(fail->names[i], SYSDEM_LANG_CPP,
+		    NULL, NULL);
+
+		if (res != NULL) {
+			(void) printf("FAIL\n\t%s\n", fail->names[i]);
+		} else {
+			(void) printf("PASS\n");
+		}
+	}
+}
+
 int
 main(int argc, const char * argv[]) {
 	run_test_list(gcc_libstdc);
 	run_test_list(llvm_pass_list);
+
+	run_fail(llvm_fail);
 
 	(void) printf("Total: %" PRIu64 "/%" PRIu64 "\n", success, total);
 	return ((success == total) ? 0 : 1);

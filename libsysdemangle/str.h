@@ -53,6 +53,7 @@ str_pair_t *str_pair_init(str_pair_t *, sysdem_ops_t *);
 void str_pair_fini(str_pair_t *);
 boolean_t str_pair_merge(str_pair_t *);
 boolean_t str_pair_copy(const str_pair_t *, str_pair_t *);
+size_t str_pair_len(const str_pair_t *);
 
 #ifdef __cplusplus
 }

@@ -14,30 +14,63 @@
  */
 
 #include <string.h>
+#include <errno.h>
 #include "sysdemangle.h"
 #include "util.h"
 
 extern char *cpp_demangle(const char *, sysdem_ops_t *, char **);
 
-char *
-sysdemangle(const char *str, sysdem_ops_t *ops, char **dbg)
+static sysdem_lang_t
+detect_lang(const char *str)
 {
 	size_t n = strlen(str);
 
-	if (n < 3)
-		return (NULL);
+	if (n < 3 || str[0] != '_')
+		return (SYSDEM_LANG_AUTO);
 
-	if (str[0] != '_')
-		return (NULL);
+	switch (str[1]) {
+	case 'Z':
+		return (SYSDEM_LANG_CPP);
+
+	case '_':
+		break;
+
+	default:
+		return (SYSDEM_LANG_AUTO);
+	}
+
+	/* why they use ___Z sometimes is puzzling.. *sigh* */
+	if (str[2] == '_' && str[3] == 'Z')
+		return (SYSDEM_LANG_CPP);
+
+	return (SYSDEM_LANG_AUTO);
+}
+
+char *
+sysdemangle(const char *str, sysdem_lang_t lang, sysdem_ops_t *ops, char **dbg)
+{
 
 	if (ops == NULL)
 		ops = sysdem_ops_default;
-	
-	switch (str[1]) {
-	case 'Z':
-		return (cpp_demangle(str, ops, dbg));
+
+	if (lang == SYSDEM_LANG_AUTO) {
+		lang = detect_lang(str);
+		if (lang == SYSDEM_LANG_AUTO) {
+			errno = ENOSYS;
+			return (NULL);
+		}
 	}
 
+	switch (lang) {
+	case SYSDEM_LANG_CPP:
+		return (cpp_demangle(str, ops, dbg));
+
+	default:
+		break;
+	}
+
+	/* XXX: better return value? */
+	errno = ENOSYS;
 	return (NULL);
 }
 
