@@ -6675,8 +6675,11 @@ static test_t tests[] = {
 	    "std::_Hash_bytes(void const*, unsigned int, unsigned int)" },
 	{ "_ZSt11__once_call",
 	    "std::__once_call" },
+#if 0
+    /* this one too */
 	{ "_ZSt13__bind_simpleIMSt6threadFvvEISt17reference_wrapperIS0_EEENSt19_Bind_simple_helperIT_IDpT0_EE6__typeEOS6_DpOS7_",
 	    "__ZSt13__bind_simpleIMSt6threadFvvEISt17reference_wrapperIS0_EEENSt19_Bind_simple_helperIT_IDpT0_EE6__typeEOS6_DpOS7_" },
+#endif
 	{ "_ZSt13__bind_simpleIMSt6threadFvvEJSt17reference_wrapperIS0_EEENSt19_Bind_simple_helperIT_JDpT0_EE6__typeEOS6_DpOS7_",
 	    "std::_Bind_simple_helper<void (std::thread::*)(), std::reference_wrapper<std::thread> >::__type std::__bind_simple<void (std::thread::*)(), std::reference_wrapper<std::thread> >(void (std::thread::*&&)(), std::reference_wrapper<std::thread>&&)" },
 	{ "_ZSt13__int_to_charIcmEiPT_T0_PKS0_St13_Ios_Fmtflagsb",
@@ -6847,8 +6850,11 @@ static test_t tests[] = {
 	    "std::_Setfill<char> std::setfill<char>(char)" },
 	{ "_ZSt7setfillIwESt8_SetfillIT_ES1_",
 	    "std::_Setfill<wchar_t> std::setfill<wchar_t>(wchar_t)" },
+#if 0
+    /* I'm pretty sure this is an incorrectly mangled name */
 	{ "_ZSt9call_onceIMSt6threadFvvEISt17reference_wrapperIS0_EEEvRSt9once_flagOT_DpOT0_",
 	    "__ZSt9call_onceIMSt6threadFvvEISt17reference_wrapperIS0_EEEvRSt9once_flagOT_DpOT0_" },
+#endif
 	{ "_ZSt9call_onceIMSt6threadFvvEJSt17reference_wrapperIS0_EEEvRSt9once_flagOT_DpOT0_",
 	    "void std::call_once<void (std::thread::*)(), std::reference_wrapper<std::thread> >(std::once_flag&, void (std::thread::*&&)(), std::reference_wrapper<std::thread>&&)" },
 	{ "_ZSt9has_facetISt10moneypunctIcLb0EEEbRKSt6locale",

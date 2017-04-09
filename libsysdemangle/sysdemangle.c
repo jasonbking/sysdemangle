@@ -16,9 +16,8 @@
 #include <string.h>
 #include <errno.h>
 #include "sysdemangle.h"
-#include "util.h"
+#include "sysdemangle_int.h"
 
-extern char *cpp_demangle(const char *, sysdem_ops_t *, char **);
 
 static sysdem_lang_t
 detect_lang(const char *str)
@@ -47,7 +46,7 @@ detect_lang(const char *str)
 }
 
 char *
-sysdemangle(const char *str, sysdem_lang_t lang, sysdem_ops_t *ops, char **dbg)
+sysdemangle(const char *str, sysdem_lang_t lang, sysdem_ops_t *ops)
 {
 
 	if (ops == NULL)
@@ -63,7 +62,7 @@ sysdemangle(const char *str, sysdem_lang_t lang, sysdem_ops_t *ops, char **dbg)
 
 	switch (lang) {
 	case SYSDEM_LANG_CPP:
-		return (cpp_demangle(str, ops, dbg));
+		return (cpp_demangle(str, ops));
 
 	default:
 		break;

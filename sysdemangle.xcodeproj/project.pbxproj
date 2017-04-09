@@ -28,7 +28,7 @@
 		EEBB4B711E90A09E0043B237 /* str.h in Headers */ = {isa = PBXBuildFile; fileRef = EE9835C01E837DFB009983C4 /* str.h */; };
 		EEBB4B721E90A0A20043B237 /* str.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835CF1E838919009983C4 /* str.c */; };
 		EEBB4B731E90A0A60043B237 /* util.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835D21E838A33009983C4 /* util.c */; };
-		EEBB4B741E90A0AA0043B237 /* util.h in Headers */ = {isa = PBXBuildFile; fileRef = EE9835D31E838A33009983C4 /* util.h */; };
+		EEBB4B741E90A0AA0043B237 /* sysdemangle_int.h in Headers */ = {isa = PBXBuildFile; fileRef = EE9835D31E838A33009983C4 /* sysdemangle_int.h */; };
 		EEBB4B751E90A0B40043B237 /* cpp.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835D61E838EB2009983C4 /* cpp.c */; };
 		EEBB4B761E90A0B80043B237 /* cpp.h in Headers */ = {isa = PBXBuildFile; fileRef = EE9835D71E838EB2009983C4 /* cpp.h */; };
 		EEBB4B771E90A0BC0043B237 /* cpp_util.c in Sources */ = {isa = PBXBuildFile; fileRef = EE9835DA1E8411C2009983C4 /* cpp_util.c */; };
@@ -91,7 +91,7 @@
 		EE9835CD1E8388DB009983C4 /* gcc-libstdc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "gcc-libstdc.c"; sourceTree = "<group>"; };
 		EE9835CF1E838919009983C4 /* str.c */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = str.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
 		EE9835D21E838A33009983C4 /* util.c */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = util.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
-		EE9835D31E838A33009983C4 /* util.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = util.h; sourceTree = "<group>"; };
+		EE9835D31E838A33009983C4 /* sysdemangle_int.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = sysdemangle_int.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
 		EE9835D61E838EB2009983C4 /* cpp.c */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = cpp.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
 		EE9835D71E838EB2009983C4 /* cpp.h */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.h; path = cpp.h; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
 		EE9835DA1E8411C2009983C4 /* cpp_util.c */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.c.c; path = cpp_util.c; sourceTree = "<group>"; tabWidth = 8; usesTabs = 1; };
@@ -174,7 +174,7 @@
 				EE9835C01E837DFB009983C4 /* str.h */,
 				EE9835CF1E838919009983C4 /* str.c */,
 				EE9835D21E838A33009983C4 /* util.c */,
-				EE9835D31E838A33009983C4 /* util.h */,
+				EE9835D31E838A33009983C4 /* sysdemangle_int.h */,
 				EE9835D61E838EB2009983C4 /* cpp.c */,
 				EE9835D71E838EB2009983C4 /* cpp.h */,
 				EE9835DA1E8411C2009983C4 /* cpp_util.c */,
@@ -218,7 +218,7 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EEBB4B741E90A0AA0043B237 /* util.h in Headers */,
+				EEBB4B741E90A0AA0043B237 /* sysdemangle_int.h in Headers */,
 				EEBB4B711E90A09E0043B237 /* str.h in Headers */,
 				EEBB4B761E90A0B80043B237 /* cpp.h in Headers */,
 				EEBB4B701E90A0990043B237 /* sysdemangle.h in Headers */,

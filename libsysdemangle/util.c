@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sysdemangle.h"
-#include "util.h"
+#include "sysdemangle_int.h"
 
 void *
 zalloc(sysdem_ops_t *ops, size_t len)

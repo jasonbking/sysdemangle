@@ -16,6 +16,10 @@
 #ifndef _CPP_H
 #define _CPP_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdio.h>
 #include "sysdemangle.h"
 #include "str.h"
@@ -72,5 +76,9 @@ boolean_t templ_save(const name_t *, size_t, templ_t *);
 boolean_t templ_push(templ_t *);
 void templ_pop(templ_t *);
 sub_t *templ_top(templ_t *);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _CPP_H */

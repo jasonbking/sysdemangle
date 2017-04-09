@@ -16,7 +16,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
-#include "util.h"
+#include "sysdemangle_int.h"
 #include "cpp.h"
 
 #define CHUNK_SIZE  (8U)

@@ -10,8 +10,10 @@
 #include <errno.h>
 #include <string.h>
 #include <setjmp.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "sysdemangle.h"
-#include "util.h"
+#include "sysdemangle_int.h"
 #include "cpp.h"
 
 #define CPP_QUAL_CONST		(1U)
@@ -63,9 +65,9 @@ static void tpush(cpp_db_t *);
 static void tpop(cpp_db_t *);
 static void tsave(cpp_db_t *, size_t);
 
-
 static void db_init(cpp_db_t *, sysdem_ops_t *);
 static void db_fini(cpp_db_t *);
+static void dump(cpp_db_t *, FILE *);
 
 static void demangle(const char *, const char *, cpp_db_t *);
 
@@ -109,7 +111,8 @@ static const char *parse_trinary_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_new_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_del_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_cast_expr(const char *, const char *, cpp_db_t *);
-static const char *parse_sizeof_param_pack_expr(const char *, const char *, cpp_db_t *);
+static const char *parse_sizeof_param_pack_expr(const char *, const char *,
+    cpp_db_t *);
 static const char *parse_typeid_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_throw_expr(const char *, const char *, cpp_db_t *);
 static const char *parse_dot_star_expr(const char *, const char *, cpp_db_t *);
@@ -133,137 +136,17 @@ static const char *parse_operator_name(const char *, const char *, cpp_db_t *);
 static const char *parse_pack_expansion(const char *, const char *, cpp_db_t *);
 static const char *parse_unresolved_type(const char *, const char *, cpp_db_t *);
 static const char *parse_unresolved_qualifier_level(const char *, const char *,
-   cpp_db_t *);
+    cpp_db_t *);
 static const char *parse_destructor_name(const char *, const char *,
     cpp_db_t *);
 static const char *parse_function_type(const char *, const char *, cpp_db_t *);
 static const char *parse_array_type(const char *, const char *, cpp_db_t *);
-static const char *parse_pointer_to_member_type(const char *, const char *, cpp_db_t *);
+static const char *parse_pointer_to_member_type(const char *, const char *,
+    cpp_db_t *);
 static const char *parse_vector_type(const char *, const char *, cpp_db_t *);
 
-
-#include <stdio.h>
-
-static void
-print_s(str_t *out, const str_t *s)
-{
-	if (s->str_len == 0 || s->str_s == NULL)
-		return;
-	(void) str_append_str(out, s);
-}
-
-static void
-print_sp(str_t *out, const str_pair_t *sp)
-{
-	str_append_c(out, '{');
-	print_s(out, &sp->strp_l);
-	str_append_c(out, '#');
-	print_s(out, &sp->strp_r);
-	str_append_c(out, '}');
-}
-
-static void
-print_name(str_t *out, const name_t *n)
-{
-	size_t i;
-
-	if (name_len(n) == 0)
-		return;
-
-	str_append(out, "Name:\n", 0);
-
-	for (i = n->nm_len - 1; i > 0; i--) {
-		char buf[10] = { 0 };
-
-		snprintf(buf, sizeof (buf), "  [%02zu] ",
-			 name_len(n) - i - 1);
-		str_append(out, buf, 0);
-
-		print_sp(out, &n->nm_items[i]);
-		str_append_c(out, '\n');
-	}
-	str_append_c(out, '\n');
-
-}
-
-
-static void
-print_sub(str_t *out, const sub_t *sub)
-{
-	const name_t *n = sub->sub_items;
-	char buf[64] = { 0 };
-
-	if (sub->sub_len == 0)
-		return;
-
-	snprintf(buf, sizeof (buf), "Subs (%zu):\n", sub->sub_len);
-	str_append(out, buf, 0);
-	for (size_t i = 0; i < sub->sub_len; i++, n++) {
-		if (i == 0) {
-			str_append(out, "  S_ = ", 0);
-		} else {
-			(void) memset(buf, 0, sizeof (buf));
-			(void) snprintf(buf, sizeof (buf), "  S%zu_ = ", i - 1);
-			str_append(out, buf, 0);
-		}
-
-		for (size_t j = 0; j < n->nm_len; j++) {
-			if (j > 0)
-				str_append_c(out, ' ');
-			print_sp(out, &n->nm_items[j]);
-		}
-
-		str_append_c(out, '\n');
-	}
-	str_append_c(out, '\n');
-}
-
-static void
-print_templ(const templ_t *tpl)
-{
-
-	printf("\nTemplate\n");
-
-	const sub_t *s = templ_top((templ_t *)tpl);
-
-	for (size_t i = 0; i < s->sub_len; i++) {
-		if (i == 0)
-			printf("T_ = ");
-		else
-			printf("T%zu_ = ", i - 1);
-
-		printf("{");
-
-		const name_t *n = &s->sub_items[i];
-		for (size_t j = 0; j < n->nm_len; j++) {
-			const str_pair_t *sp = &n->nm_items[j];
-			printf("{%.*s#%*.s}",
-			    (int)sp->strp_l.str_len, sp->strp_l.str_s,
-			    (int)sp->strp_r.str_len, sp->strp_r.str_s);
-		}
-		printf("}\n");
-	}
-	printf("\n");
-}
-
-static void
-dump(cpp_db_t *db, char **dbg)
-{
-	str_t s;
-
-	str_init(&s, db->cpp_ops);
-
-	print_name(&s, &db->cpp_name);
-	print_sub(&s, &db->cpp_subs);
-	print_templ(&db->cpp_templ);
-
-	*dbg = zalloc(db->cpp_ops, s.str_len + 1);
-	(void) memcpy(*dbg, s.str_s, s.str_len);
-	str_fini(&s);
-}
-
 char *
-cpp_demangle(const char *src, sysdem_ops_t *ops, char **dbg)
+cpp_demangle(const char *src, sysdem_ops_t *ops)
 {
 	char *result = NULL;
 	cpp_db_t db;
@@ -311,9 +194,8 @@ cpp_demangle(const char *src, sysdem_ops_t *ops, char **dbg)
 	}
 
 done:
-	if (dbg != NULL) {
-		dump(&db, dbg);
-	}
+	if (getenv("DEMANGLE_DEBUG") != NULL)
+		dump(&db, stdout);
 
 	db_fini(&db);
 	return (result);
@@ -814,21 +696,25 @@ parse_local_name(const char *first, const char *last,
 	return (t2);
 }
 
-// <nested-name> ::= N [<CV-qualifiers>] [<ref-qualifier>] <prefix> <unqualified-name> E
-//               ::= N [<CV-qualifiers>] [<ref-qualifier>] <template-prefix> <template-args> E
-//
-// <prefix> ::= <prefix> <unqualified-name>
-//          ::= <template-prefix> <template-args>
-//          ::= <template-param>
-//          ::= <decltype>
-//          ::= # empty
-//          ::= <substitution>
-//          ::= <prefix> <data-member-prefix>
-//  extension ::= L
-//
-// <template-prefix> ::= <prefix> <template unqualified-name>
-//                   ::= <template-param>
-//                   ::= <substitution>
+/*
+ *BEGIN CSTYLED
+ * <nested-name> ::= N [<CV-qualifiers>] [<ref-qualifier>] <prefix> <unqualified-name> E
+ *               ::= N [<CV-qualifiers>] [<ref-qualifier>] <template-prefix> <template-args> E
+ *
+ * <prefix> ::= <prefix> <unqualified-name>
+ *          ::= <template-prefix> <template-args>
+ *          ::= <template-param>
+ *          ::= <decltype>
+ *          ::= # empty
+ *          ::= <substitution>
+ *          ::= <prefix> <data-member-prefix>
+ *  extension ::= L
+ *
+ * <template-prefix> ::= <prefix> <template unqualified-name>
+ *                   ::= <template-param>
+ *                   ::= <substitution>
+ *END CSTYLED
+ */
 static const char *
 parse_nested_name(const char *first, const char *last,
     boolean_t *ends_with_template_args, cpp_db_t *db)
@@ -1513,7 +1399,7 @@ parse_cast_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t2);
 }
 
-// pt <expression> <expression>                    # expr->name
+/* pt <expression> <expression>                    # expr->name */
 static const char *
 parse_arrow_expr(const char *first, const char *last, cpp_db_t *db)
 {
@@ -1549,28 +1435,32 @@ paren(str_pair_t *sp)
 	}
 }
 
-// <type> ::= <builtin-type>
-//        ::= <function-type>
-//        ::= <class-enum-type>
-//        ::= <array-type>
-//        ::= <pointer-to-member-type>
-//        ::= <template-param>
-//        ::= <template-template-param> <template-args>
-//        ::= <decltype>
-//        ::= <substitution>
-//        ::= <CV-qualifiers> <type>
-//        ::= P <type>        # pointer-to
-//        ::= R <type>        # reference-to
-//        ::= O <type>        # rvalue reference-to (C++0x)
-//        ::= C <type>        # complex pair (C 2000)
-//        ::= G <type>        # imaginary (C 2000)
-//        ::= Dp <type>       # pack expansion (C++0x)
-//        ::= U <source-name> <type>  # vendor extended type qualifier
-// extension := U <objc-name> <objc-type>  # objc-type<identifier>
-// extension := <vector-type> # <vector-type> starts with Dv
-
-// <objc-name> ::= <k0 number> objcproto <k1 number> <identifier>  # k0 = 9 + <number of digits in k1> + k1
-// <objc-type> := <source-name>  # PU<11+>objcproto 11objc_object<source-name> 11objc_object -> id<source-name>
+/*
+ *BEGIN CSTYLED
+ * <type> ::= <builtin-type>
+ *        ::= <function-type>
+ *        ::= <class-enum-type>
+ *        ::= <array-type>
+ *        ::= <pointer-to-member-type>
+ *        ::= <template-param>
+ *        ::= <template-template-param> <template-args>
+ *        ::= <decltype>
+ *        ::= <substitution>
+ *        ::= <CV-qualifiers> <type>
+ *        ::= P <type>        # pointer-to
+ *        ::= R <type>        # reference-to
+ *        ::= O <type>        # rvalue reference-to (C++0x)
+ *        ::= C <type>        # complex pair (C 2000)
+ *        ::= G <type>        # imaginary (C 2000)
+ *        ::= Dp <type>       # pack expansion (C++0x)
+ *        ::= U <source-name> <type>  # vendor extended type qualifier
+ * extension := U <objc-name> <objc-type>  # objc-type<identifier>
+ * extension := <vector-type> # <vector-type> starts with Dv
+ *
+ * <objc-name> ::= <k0 number> objcproto <k1 number> <identifier>  # k0 = 9 + <number of digits in k1> + k1
+ * <objc-type> := <source-name>  # PU<11+>objcproto 11objc_object<source-name> 11objc_object -> id<source-name>
+ *END CSTYLED
+ */
 static const char *
 parse_type(const char *first, const char *last, cpp_db_t *db)
 {
@@ -1954,10 +1844,14 @@ parse_sizeof(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
-// <function-param> ::= fp <top-level CV-qualifiers> _                                     # L == 0, first parameter
-//                  ::= fp <top-level CV-qualifiers> <parameter-2 non-negative number> _   # L == 0, second and later parameters
-//                  ::= fL <L-1 non-negative number> p <top-level CV-qualifiers> _         # L > 0, first parameter
-//                  ::= fL <L-1 non-negative number> p <top-level CV-qualifiers> <parameter-2 non-negative number> _   # L > 0, second and later parameters
+/*
+ *BEGIN CSTYLED
+ * <function-param> ::= fp <top-level CV-qualifiers> _                                     # L == 0, first parameter
+ *                  ::= fp <top-level CV-qualifiers> <parameter-2 non-negative number> _   # L == 0, second and later parameters
+ *                  ::= fL <L-1 non-negative number> p <top-level CV-qualifiers> _         # L > 0, first parameter
+ *                  ::= fL <L-1 non-negative number> p <top-level CV-qualifiers> <parameter-2 non-negative number> _   # L > 0, second and later parameters
+ *END CSTYLED
+ */
 static const char *
 parse_function_param(const char *first, const char *last, cpp_db_t *db)
 {
@@ -1992,8 +1886,10 @@ parse_function_param(const char *first, const char *last, cpp_db_t *db)
 	return (t2 + 1);
 }
 
-// sZ <template-param>		# size of a parameter pack
-// sZ <function-param>		# size of a function parameter pack
+/*
+ * sZ <template-param>		# size of a parameter pack
+ * sZ <function-param>		# size of a function parameter pack
+ */
 static const char *
 parse_sizeof_param_pack_expr(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2022,8 +1918,10 @@ parse_sizeof_param_pack_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
-// te <expression>                                      # typeid (expression)
-// ti <type>                                            # typeid (type)
+/*
+ * te <expression>                                      # typeid (expression)
+ * ti <type>                                            # typeid (type)
+ */
 static const char *
 parse_typeid_expr(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2047,8 +1945,10 @@ parse_typeid_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
-// tr							# throw
-// tw <expression>                                      # throw expression
+/*
+ * tr							# throw
+ * tw <expression>                                      # throw expression
+ */
 static const char *
 parse_throw_expr(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2071,7 +1971,7 @@ parse_throw_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
-// ds <expression> <expression>                         # expr.*expr
+/* ds <expression> <expression>                         # expr.*expr */
 static const char *
 parse_dot_star_expr(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2093,7 +1993,7 @@ parse_dot_star_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t2);
 }
 
-// dt <expression> <unresolved-name>                    # expr.name
+/* dt <expression> <unresolved-name>                    # expr.name */
 static const char *
 parse_dot_expr(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2115,7 +2015,7 @@ parse_dot_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t1);
 }
 
-// cl <expression>+ E                                   # call
+/* cl <expression>+ E                                   # call */
 static const char *
 parse_call_expr(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2151,9 +2051,12 @@ parse_call_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t + 1);
 }
 
-// cv <type> <expression>                               # conversion with one argument
-// cv <type> _ <expression>* E                          # conversion with a different number of arguments
-
+/*
+ *BEGIN CSTYLED
+ * cv <type> <expression>	# conversion with one argument
+ * cv <type> _ <expression>* E	# conversion with a different number of arguments
+ *END CSTYLED
+ */
 static const char *
 parse_conv_expr(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2212,7 +2115,7 @@ parse_conv_expr(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
-// <simple-id> ::= <source-name> [ <template-args> ]
+/* <simple-id> ::= <source-name> [ <template-args> ] */
 static const char *
 parse_simple_id(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2228,9 +2131,11 @@ parse_simple_id(const char *first, const char *last, cpp_db_t *db)
 	return (t1);
 }
 
-// <unresolved-type> ::= <template-param>
-//                   ::= <decltype>
-//                   ::= <substitution>
+/*
+ * <unresolved-type> ::= <template-param>
+ *                   ::= <decltype>
+ *                   ::= <substitution>
+ */
 static const char *
 parse_unresolved_type(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2278,7 +2183,7 @@ parse_unresolved_type(const char *first, const char *last, cpp_db_t *db)
 	return (first);
 }
 
-// sp <expression>                                  # pack expansion
+/* sp <expression>                                  # pack expansion */
 static const char *
 parse_pack_expansion(const char *first, const char *last, cpp_db_t *db)
 {
@@ -2778,18 +2683,20 @@ parse_expr_primary(const char *first, const char *last, cpp_db_t *db)
 		}
 		return (first + 4);
 	case 'c':
-		return (parse_integer_literal(first + 2, last, "(char){0}", db));
+		return (parse_integer_literal(first + 2, last,
+		    "(char){0}", db));
 	case 'd':
-		// double
+		/* double */
 		return (parse_floating_literal(first + 1, last, db));
 	case 'e':
-		// long double
+		/* long double */
 		return (parse_floating_literal(first + 1, last, db));
 	case 'f':
-		// float
+		/* float */
 		return (parse_floating_literal(first + 1, last, db));
 	case 'h':
-		return (parse_integer_literal(first + 2, last, "(unsigned char){0}", db));
+		return (parse_integer_literal(first + 2, last,
+		    "(unsigned char){0}", db));
 	case 'i':
 		return (parse_integer_literal(first + 2, last, "{0}", db));
 	case 'j':
@@ -2805,7 +2712,8 @@ parse_expr_primary(const char *first, const char *last, cpp_db_t *db)
 		return (parse_integer_literal(first + 2, last,
 		    "(unsigned __int128){0}", db));
 	case 's':
-		return (parse_integer_literal(first + 2, last, "(short){0}", db));
+		return (parse_integer_literal(first + 2, last,
+		    "(short){0}", db));
 	case 't':
 		return (parse_integer_literal(first + 2, last,
 		    "(unsigned short){0}", db));
@@ -3184,12 +3092,14 @@ parse_source_name(const char *first, const char *last, cpp_db_t *db)
 	return (t + n);
 }
 
-// extension:
-// <vector-type>           ::= Dv <positive dimension number> _
-//                                    <extended element type>
-//                         ::= Dv [<dimension expression>] _ <element type>
-// <extended element type> ::= <element type>
-//                         ::= p # AltiVec vector pixel
+/*
+ * extension:
+ * <vector-type>           ::= Dv <positive dimension number> _
+ *                                    <extended element type>
+ *                         ::= Dv [<dimension expression>] _ <element type>
+ * <extended element type> ::= <element type>
+ *                         ::= p # AltiVec vector pixel
+ */
 static const char *
 parse_vector_type(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3243,9 +3153,12 @@ parse_vector_type(const char *first, const char *last, cpp_db_t *db)
 	return (t1);
 }
 
-// <decltype>  ::= Dt <expression> E  # decltype of an id-expression or class member access (C++0x)
-//             ::= DT <expression> E  # decltype of an expression (C++0x)
-
+/*
+ *BEGIN CSTYLED
+ * <decltype>  ::= Dt <expression> E  # decltype of an id-expression or class member access (C++0x)
+ *             ::= DT <expression> E  # decltype of an expression (C++0x)
+ *END CSTYLED
+ */
 static const char *
 parse_decltype(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3265,8 +3178,10 @@ parse_decltype(const char *first, const char *last, cpp_db_t *db)
 	return (t + 1);
 }
 
-// <array-type> ::= A <positive dimension number> _ <element type>
-//              ::= A [<dimension expression>] _ <element type>
+/*
+ * <array-type> ::= A <positive dimension number> _ <element type>
+ *              ::= A [<dimension expression>] _ <element type>
+ */
 static const char *
 parse_array_type(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3317,7 +3232,7 @@ parse_array_type(const char *first, const char *last, cpp_db_t *db)
 	return (t1);
 }
 
-// <pointer-to-member-type> ::= M <class type> <member type>
+/* <pointer-to-member-type> ::= M <class type> <member type> */
 static const char *
 parse_pointer_to_member_type(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3348,16 +3263,19 @@ parse_pointer_to_member_type(const char *first, const char *last, cpp_db_t *db)
 	return (t2);
 }
 
-// <unresolved-name>
-//  extension        ::= srN <unresolved-type> [<template-args>] <unresolved-qualifier-level>* E <base-unresolved-name>
-//                   ::= [gs] <base-unresolved-name>                     # x or (with "gs") ::x
-//                   ::= [gs] sr <unresolved-qualifier-level>+ E <base-unresolved-name>
-//                                                                       # A::x, N::y, A<T>::z; "gs" means leading "::"
-//                   ::= sr <unresolved-type> <base-unresolved-name>     # T::x / decltype(p)::x
-//  extension        ::= sr <unresolved-type> <template-args> <base-unresolved-name>
-//                                                                       # T::N::x /decltype(p)::N::x
-//  (ignored)        ::= srN <unresolved-type>  <unresolved-qualifier-level>+ E <base-unresolved-name>
-
+/*
+ *BEGIN CSTYLED
+ * <unresolved-name>
+ *  extension        ::= srN <unresolved-type> [<template-args>] <unresolved-qualifier-level>* E <base-unresolved-name>
+ *                   ::= [gs] <base-unresolved-name>                     # x or (with "gs") ::x
+ *                   ::= [gs] sr <unresolved-qualifier-level>+ E <base-unresolved-name>
+ *                                                                       # A::x, N::y, A<T>::z; "gs" means leading "::"
+ *                   ::= sr <unresolved-type> <base-unresolved-name>     # T::x / decltype(p)::x
+ *  extension        ::= sr <unresolved-type> <template-args> <base-unresolved-name>
+ *                                                                       # T::N::x /decltype(p)::N::x
+ *  (ignored)        ::= srN <unresolved-type>  <unresolved-qualifier-level>+ E <base-unresolved-name>
+ *END CSTYLED
+ */
 static const char *
 parse_unresolved_name(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3471,20 +3389,24 @@ parse_unresolved_name(const char *first, const char *last, cpp_db_t *db)
 	return (t2);
 }
 
-// <unresolved-qualifier-level> ::= <simple-id>
+/* <unresolved-qualifier-level> ::= <simple-id> */
 static const char *
 parse_unresolved_qualifier_level(const char *first, const char *last, cpp_db_t *db)
 {
 	return (parse_simple_id(first, last, db));
 }
 
-// <base-unresolved-name> ::= <simple-id>                                # unresolved name
-//          extension     ::= <operator-name>                            # unresolved operator-function-id
-//          extension     ::= <operator-name> <template-args>            # unresolved operator template-id
-//                        ::= on <operator-name>                         # unresolved operator-function-id
-//                        ::= on <operator-name> <template-args>         # unresolved operator template-id
-//                        ::= dn <destructor-name>                       # destructor or pseudo-destructor;
-//                                                                         # e.g. ~X or ~X<N-1>
+/*
+ *BEGIN CSTYLED
+ * <base-unresolved-name> ::= <simple-id>                                # unresolved name
+ *          extension     ::= <operator-name>                            # unresolved operator-function-id
+ *          extension     ::= <operator-name> <template-args>            # unresolved operator template-id
+ *                        ::= on <operator-name>                         # unresolved operator-function-id
+ *                        ::= on <operator-name> <template-args>         # unresolved operator template-id
+ *                        ::= dn <destructor-name>                       # destructor or pseudo-destructor;
+ *                                                                       # e.g. ~X or ~X<N-1>
+ *END CSTYLED
+ */
 static const char *
 parse_base_unresolved_name(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3528,8 +3450,10 @@ parse_base_unresolved_name(const char *first, const char *last, cpp_db_t *db)
 	return (t1);
 }
 
-// <destructor-name> ::= <unresolved-type>                               # e.g., ~T or ~decltype(f())
-//                   ::= <simple-id>                                     # e.g., ~A<2*N>
+/*
+ * <destructor-name> ::= <unresolved-type>	# e.g., ~T or ~decltype(f())
+ *                   ::= <simple-id>		# e.g., ~A<2*N>
+ */
 static const char *
 parse_destructor_name(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3548,10 +3472,12 @@ parse_destructor_name(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
-//  <ref-qualifier> ::= R                   # & ref-qualifier
-//  <ref-qualifier> ::= O                   # && ref-qualifier
-
-// <function-type> ::= F [Y] <bare-function-type> [<ref-qualifier>] E
+/*
+ *  <ref-qualifier> ::= R                   # & ref-qualifier
+ *  <ref-qualifier> ::= O                   # && ref-qualifier
+ *
+ * <function-type> ::= F [Y] <bare-function-type> [<ref-qualifier>] E
+ */
 static const char *
 parse_function_type(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3623,9 +3549,10 @@ parse_function_type(const char *first, const char *last, cpp_db_t *db)
 	return (t + 1);
 }
 
-// <template-param> ::= T_    # first template parameter
-//                  ::= T <parameter-2 non-negative number> _
-
+/*
+ * <template-param> ::= T_    # first template parameter
+ *                  ::= T <parameter-2 non-negative number> _
+ */
 static const char *
 parse_template_param(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3674,8 +3601,10 @@ parse_template_param(const char *first, const char *last, cpp_db_t *db)
 	return (t);
 }
 
-// <template-args> ::= I <template-arg>* E
-//     extension, the abi says <template-arg>+
+/*
+ * <template-args> ::= I <template-arg>* E
+ *     extension, the abi says <template-arg>+
+ */
 static const char *
 parse_template_args(const char *first, const char *last, cpp_db_t *db)
 {
@@ -3947,4 +3876,144 @@ db_fini(cpp_db_t *db)
 	sub_fini(&db->cpp_subs);
 	templ_fini(&db->cpp_templ);
 	(void) memset(db, 0, sizeof (*db));
+}
+
+static void
+print_sp(const str_pair_t *sp, FILE *out)
+{
+	(void) fprintf(out, "{%.*s#%.*s}",
+	    (int) sp->strp_l.str_len, sp->strp_l.str_s,
+	    (int) sp->strp_r.str_len, sp->strp_r.str_s);
+}
+
+static void
+print_name(const name_t *n, FILE *out)
+{
+	const str_pair_t *sp = name_top((name_t *)n);
+	size_t i;
+
+	(void) fprintf(out, "Name:\n");
+
+	if (name_len(n) == 0)
+		return;
+
+	for (i = 0; i < n->nm_len; i++, sp--) {
+		(void) fprintf(out, "  [%02zu] ", i);
+		print_sp(sp, out);
+		(void) fputc('\n', out);
+	}
+
+	(void) fputc('\n', out);
+}
+
+
+static char *
+base36(char *buf, size_t val)
+{
+	char tmp[16] = { 0 };
+	char *p = tmp;
+
+	if (val == 0) {
+		buf[0] = '0';
+		buf[1] = '\0';
+		return (buf);
+	}
+
+	while (val > 0) {
+		size_t r = val % 36;
+
+		if (r < 10)
+			*p++ = r + '0';
+		else
+			*p++ = r - 10 + 'A';
+
+		val /= 36;
+	}
+
+	char *q = buf;
+	while (--p >= tmp)
+		*q++ = *p;
+
+	return (buf);
+}
+
+static void
+print_sub(const sub_t *sub, FILE *out)
+{
+	const name_t *n = sub->sub_items;
+
+	(void) fprintf(out, "Substitutions:\n");
+
+	if (sub->sub_len == 0)
+		return;
+
+	for (size_t i = 0; i < sub->sub_len; i++, n++) {
+		(void) printf("  ");
+		if (i == 0) {
+			(void) fprintf(out, "%-4s", "S_");
+		} else {
+			char buf[16] = { 0 };
+			char buf2[16] = { 0 };
+
+			(void) snprintf(buf, sizeof (buf), "S%s_",
+			    base36(buf2, i));
+			(void) fprintf(out, "%-4s", buf);
+		}
+		(void) fprintf(out, " = ");
+
+		(void) fputc('{', out);
+		for (size_t j = 0; j < n->nm_len; j++) {
+			if (j > 0)
+				(void) fputc(' ', out);
+			print_sp(&n->nm_items[j], out);
+		}
+		(void) fputc('}', out);
+
+		(void) fputc('\n', out);
+	}
+	(void) fputc('\n', out);
+}
+
+static void
+print_templ(const templ_t *tpl, FILE *out)
+{
+
+	(void) fprintf(out, "Template\n");
+
+	const sub_t *s = templ_top((templ_t *)tpl);
+
+	for (size_t i = 0; i < s->sub_len; i++) {
+		char buf[16] = { 0 };
+
+		if (i == 0)
+			(void) snprintf(buf, sizeof (buf), "%s", "T_");
+		else
+			(void) snprintf(buf, sizeof (buf), "T%zu_", i - 1);
+
+		(void) fprintf(out, "  %-4s = ", buf);
+
+		(void) fputc('{', out);
+
+		const name_t *n = &s->sub_items[i];
+		for (size_t j = 0; j < n->nm_len; j++) {
+			const str_pair_t *sp = &n->nm_items[j];
+
+			if (j > 0)
+				(void) fputc(' ', out);
+
+			(void) fprintf(out, "{%.*s#%.*s}",
+			       (int)sp->strp_l.str_len, sp->strp_l.str_s,
+			       (int)sp->strp_r.str_len, sp->strp_r.str_s);
+		}
+		(void) fprintf(out, "}\n");
+	}
+	(void) fprintf(out, "\n");
+}
+
+static void
+dump(cpp_db_t *db, FILE *out)
+{
+	print_name(&db->cpp_name, out);
+	print_sub(&db->cpp_subs, out);
+	print_templ(&db->cpp_templ, out);
 }

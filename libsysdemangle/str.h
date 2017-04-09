@@ -18,6 +18,7 @@
 
 #include <sys/types.h>
 #include "sysdemangle.h"
+#include "sysdemangle_int.h"
 
 #ifdef __cplusplus
 extern "C" {

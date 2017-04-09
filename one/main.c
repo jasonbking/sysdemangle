@@ -21,12 +21,10 @@ int main(int argc, const char * argv[]) {
     printf("%s\n\n", test.mangled);
     printf("exp: %s\n", test.demangled);
 
-    char *out = NULL;
-    char *res = sysdemangle(test.mangled, SYSDEM_LANG_CPP, NULL, &out);
+    char *res = sysdemangle(test.mangled, SYSDEM_LANG_CPP, NULL);
 
     if (res != NULL)
         printf("res: %s\n", res);
 
-    printf("\n%s\n", out);
     return 0;
 }
