@@ -34,4 +34,15 @@ typedef struct test_fail_s {
 	size_t n;
 } test_fail_t;
 
+typedef struct test_fp_case_s {
+    const char *mangled;
+    const char *demangled[4];
+} test_fp_case_t;
+
+typedef struct test_fp_s {
+    const char  *desc;
+    test_fp_case_t *cases;
+    size_t n;
+} test_fp_t;
+
 #endif /* _TESTS_H */

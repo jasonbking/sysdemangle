@@ -12,7 +12,7 @@ static struct {
     const char *mangled;
     const char *demangled;
 } test = {
-    "_ZSt13__bind_simpleIMSt6threadFvvESt17reference_wrapperIS0_EENSt19_Bind_simple_helperIT_IDpT0_EE6__typeEOS6_DpOS7_",
+    "_ZNSt16allocator_traitsISaIN4llvm3sys2fs18directory_iteratorEEE9constructIS3_IS3_EEEDTcl12_S_constructfp_fp0_spcl7forwardIT0_Efp1_EEERS4_PT_DpOS7_",
     "void test1::f<test1::X, int>(test1::X<int>)"
 };
 
