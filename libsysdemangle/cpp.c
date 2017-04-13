@@ -59,7 +59,8 @@ static void save_top(cpp_db_t *, size_t);
 static void sub(cpp_db_t *, size_t);
 
 static boolean_t tempty(const cpp_db_t *);
-static boolean_t ttempty(const cpp_db_t *);
+static size_t ttlen(const cpp_db_t *);
+
 static void tsub(cpp_db_t *, size_t);
 static void tpush(cpp_db_t *);
 static void tpop(cpp_db_t *);
@@ -3047,24 +3048,30 @@ parse_substitution(const char *first, const char *last, cpp_db_t *db)
 		}
 	}
 
-	if (first[1] == '_') {
-		sub(db, 0);
-		return (first + 2);
+	const char *t = first + 1;
+	size_t n = 0;
+
+	if (t[0] != '_') {
+		t = parse_base36(first + 1, last, &n);
+		if (t == first + 1 || t[0] != '_')
+			return (first);
+
+		/*
+		 * S_ == substitution 0,
+		 * S0_ == substituion 1,
+		 * ...
+		 */
+		n++;
 	}
 
-	size_t n = 0;
-	const char *t = parse_base36(first + 1, last, &n);
-	if (t == first + 1 || t[0] != '_')
+	if (n >= sub_len(&db->cpp_subs))
 		return (first);
 
-	/*
-	 * S_ == substitution 0,
-	 * S0_ == substituion 1,
-	 * ...
-	 */
-	sub(db, n + 1);
+	sub(db, n);
 
 	/* skip _ */
+	ASSERT3U(t[0], ==, '_');
+
 	return (t + 1);
 }
 
@@ -3591,7 +3598,7 @@ parse_template_param(const char *first, const char *last, cpp_db_t *db)
 	if (tempty(db))
 		return (first);
 
-	if (ttempty(db)) {
+	if (idx >= ttlen(db)) {
 		nadd_l(db, first, (size_t)(t - first));
 		db->cpp_fix_forward_references = B_TRUE;
 		return (t);
@@ -3826,10 +3833,10 @@ tempty(const cpp_db_t *db)
 	return (templ_empty(&db->cpp_templ) ? B_TRUE : B_FALSE);
 }
 
-static boolean_t
-ttempty(const cpp_db_t *db)
+static size_t
+ttlen(const cpp_db_t *db)
 {
-	return (templ_top_empty(&db->cpp_templ));
+	return (templ_top_len(&db->cpp_templ));
 }
 
 static void

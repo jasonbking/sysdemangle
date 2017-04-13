@@ -58,6 +58,7 @@ void sub_pop(sub_t *);
 boolean_t sub_save(sub_t *, const name_t *, size_t);
 boolean_t sub_substitute(const sub_t *, size_t, name_t *);
 boolean_t sub_empty(const sub_t *);
+size_t sub_len(const sub_t *);
 
 typedef struct templ_s {
 	sub_t		*tpl_items;
@@ -69,7 +70,7 @@ typedef struct templ_s {
 void templ_init(templ_t *, sysdem_ops_t *);
 void templ_fini(templ_t *);
 boolean_t templ_empty(const templ_t *);
-boolean_t templ_top_empty(const templ_t *);
+size_t templ_top_len(const templ_t *);
 boolean_t templ_sub(const templ_t *, size_t, name_t *);
 boolean_t templ_save(const name_t *, size_t, templ_t *);
 

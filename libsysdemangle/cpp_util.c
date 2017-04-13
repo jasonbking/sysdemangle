@@ -367,6 +367,12 @@ sub_empty(const sub_t *sub)
 	return ((sub->sub_len == 0) ? B_TRUE : B_FALSE);
 }
 
+size_t
+sub_len(const sub_t *sub)
+{
+	return (sub->sub_len);
+}
+
 static boolean_t
 sub_reserve(sub_t *sub, size_t amt)
 {
@@ -529,11 +535,12 @@ templ_empty(const templ_t *tpl)
 	return ((tpl->tpl_len == 0) ? B_TRUE : B_FALSE);
 }
 
-boolean_t
-templ_top_empty(const templ_t *tpl)
+size_t
+templ_top_len(const templ_t *tpl)
 {
 	const sub_t *sub = templ_top((templ_t *)tpl);
-	return (sub_empty(sub));
+
+	return (sub->sub_len);
 }
 
 boolean_t
